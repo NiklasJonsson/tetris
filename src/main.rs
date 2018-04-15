@@ -18,7 +18,8 @@ const RED: [f32; 4] = [1.0, 0.0, 0.0, 1.0];
 const GRAY: [f32; 4] = [0.5, 0.5, 0.5, 1.0];
 
 const SQUARE_WIDTH: usize = 50;
-const MOV_SPEED: f64 = 100.0;
+const BASE_MOVE_SPEED: f64 = 100.0;
+const MAX_MOVE_SPEED: f64 = 200.0;
 
 const WINDOW_HEIGHT: usize = 800;
 const WINDOW_WIDTH: usize = 400;
@@ -239,7 +240,8 @@ impl Tetramino {
 struct App {
     gl: GlGraphics,
     square_slots: [[Option<Square>; N_HEIGHT_LANES]; N_WIDTH_LANES],
-    tetramino: Tetramino
+    tetramino: Tetramino,
+    mov_speed: f64,
 }
 
 impl App {
@@ -295,13 +297,14 @@ impl App {
                     self.square_slots[i][j] = None;
                 }
 
-                for k in (0..(j-1)).rev() {
-                    for l in 0..N_WIDTH_LANES {
-                        if let Some(mut sq) = self.square_slots[l][k] {
-                            if self.square_slots[l][k+1].is_none() {
-                                self.square_slots[l][k+1] = Some(sq);
-                                self.square_slots[l][k] = None;
+                for r in (0..j).rev() {
+                    for c in 0..N_WIDTH_LANES {
+                        if let Some(mut sq) = self.square_slots[c][r] {
+                            if self.square_slots[c][r+1].is_none() {
+                                // TODO: Use references instead
                                 sq.pos.incr_y();
+                                self.square_slots[c][r+1] = Some(sq);
+                                self.square_slots[c][r] = None;
                             }
                         }
                     }
@@ -324,7 +327,7 @@ impl App {
             self.clean_filled_rows();
         }
 
-        self.tetramino.float_pos += MOV_SPEED * args.dt;
+        self.tetramino.float_pos += self.mov_speed * args.dt;
         if self.tetramino.float_pos > LANE_HEIGHT as f64{
             self.tetramino.float_pos = 0.0;
             self.tetramino.move_down();
@@ -337,6 +340,12 @@ impl App {
                 self.tetramino.move_left();
             } else if args.button == Button::Keyboard(Key::Right) {
                 self.tetramino.move_right();
+            } else if args.button == Button::Keyboard(Key::Down) {
+                self.mov_speed = MAX_MOVE_SPEED;
+            }
+        } else if args.state == ButtonState::Release {
+            if args.button == Button::Keyboard(Key::Down) {
+                self.mov_speed = BASE_MOVE_SPEED;
             }
         }
     }
@@ -358,7 +367,8 @@ fn main() {
     let mut app = App {
         gl: GlGraphics::new(opengl),
         square_slots: [[None; N_HEIGHT_LANES]; N_WIDTH_LANES],
-        tetramino: Tetramino::new()
+        tetramino: Tetramino::new(),
+        mov_speed: BASE_MOVE_SPEED,
     };
 
     let mut events = Events::new(EventSettings::new());
