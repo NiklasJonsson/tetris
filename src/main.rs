@@ -68,6 +68,16 @@ impl LanePosition {
     }
 }
 
+impl std::ops::Add for LanePosition {
+    type Output = LanePosition;
+
+    fn add(self, other: LanePosition) -> LanePosition {
+        LanePosition {
+            x: self.x + other.x,
+            y: self.y + other.y,
+        }
+    }
+}
 #[derive(Debug, Copy, Clone)]
 struct Square {
     pos: LanePosition,
@@ -125,9 +135,10 @@ impl TetraminoType {
 
 struct Tetramino {
     t_type: TetraminoType,
-    squares: [Square; 4],
+    squares: [LanePosition; 4],
     float_pos: f64,
     pos: LanePosition,
+    color: [f32; 4],
 }
 
 impl Square {
@@ -145,9 +156,17 @@ impl Square {
 
 impl Tetramino {
     fn render(&self, gl: &mut GlGraphics, args: &RenderArgs) {
-        for sq in self.squares.iter() {
-            sq.render(gl, args);
-        }
+        use graphics::*;
+        let render_squares = self.squares.iter().map(|rel_pos| {
+            rectangle::square(
+            ((rel_pos.x + self.pos.x) * LANE_WIDTH) as f64,
+            ((rel_pos.y + self.pos.y) * LANE_HEIGHT) as f64,
+            SQUARE_WIDTH as f64)});
+        gl.draw(args.viewport(), |c, gl| {
+            for rsq in render_squares {
+                rectangle(self.color, rsq, c.transform, gl);
+            }
+        });
     }
 
     fn get_new_type() -> TetraminoType {
@@ -164,45 +183,45 @@ impl Tetramino {
         return LanePosition {x: num, y: 0};
     }
 
-    fn get_squares(t_type: TetraminoType, start_pos: LanePosition) -> [Square; 4] {
+    fn get_rel_pos(t_type: TetraminoType) -> [LanePosition; 4] {
         use TetraminoType::*;
         match t_type {
-            Line => {[Square{pos: start_pos, color: RED},
-                 Square{pos: LanePosition{x: start_pos.x + 1, y: start_pos.y}, color: RED},
-                 Square{pos: LanePosition{x: start_pos.x + 2, y: start_pos.y}, color: RED},
-                 Square{pos: LanePosition{x: start_pos.x + 3, y: start_pos.y}, color: RED}]},
-            Sq => {[Square{pos: start_pos, color: RED},
-                 Square{pos: LanePosition{x: start_pos.x + 1, y: start_pos.y}, color: RED},
-                 Square{pos: LanePosition{x: start_pos.x, y: start_pos.y + 1}, color: RED},
-                 Square{pos: LanePosition{x: start_pos.x + 1, y: start_pos.y + 1}, color: RED}]},
-            T => {[Square{pos: start_pos, color: RED},
-                 Square{pos: LanePosition{x: start_pos.x + 1, y: start_pos.y}, color: RED},
-                 Square{pos: LanePosition{x: start_pos.x + 2, y: start_pos.y}, color: RED},
-                 Square{pos: LanePosition{x: start_pos.x + 1, y: start_pos.y + 1}, color: RED}]},
-            L => {[Square{pos: start_pos, color: RED},
-                 Square{pos: LanePosition{x: start_pos.x + 1, y: start_pos.y}, color: RED},
-                 Square{pos: LanePosition{x: start_pos.x + 2, y: start_pos.y}, color: RED},
-                 Square{pos: LanePosition{x: start_pos.x, y: start_pos.y + 1}, color: RED}]},
-            J => {[Square{pos: start_pos, color: RED},
-                 Square{pos: LanePosition{x: start_pos.x + 1, y: start_pos.y}, color: RED},
-                 Square{pos: LanePosition{x: start_pos.x + 2, y: start_pos.y}, color: RED},
-                 Square{pos: LanePosition{x: start_pos.x + 2, y: start_pos.y + 1}, color: RED}]},
-            S => {[Square{pos: LanePosition{x: start_pos.x + 1, y: start_pos.y} , color: RED},
-                 Square{pos: LanePosition{x: start_pos.x + 2, y: start_pos.y}, color: RED},
-                 Square{pos: LanePosition{x: start_pos.x, y: start_pos.y + 1}, color: RED},
-                 Square{pos: LanePosition{x: start_pos.x + 1, y: start_pos.y + 1}, color: RED}]},
-            Z => {[Square{pos: start_pos, color: RED},
-                 Square{pos: LanePosition{x: start_pos.x + 1, y: start_pos.y}, color: RED},
-                 Square{pos: LanePosition{x: start_pos.x + 1, y: start_pos.y + 1}, color: RED},
-                 Square{pos: LanePosition{x: start_pos.x + 2, y: start_pos.y + 1}, color: RED}]},
+            Line => [LanePosition{x: 0, y: 0},
+                     LanePosition{x: 1, y: 0},
+                     LanePosition{x: 2, y: 0},
+                     LanePosition{x: 3, y: 0}],
+            Sq => [LanePosition{x: 0, y: 0},
+                     LanePosition{x: 1, y: 0},
+                     LanePosition{x: 0, y: 1},
+                     LanePosition{x: 1, y: 1}],
+            T => [LanePosition{x: 0, y: 0},
+                     LanePosition{x: 1, y: 0},
+                     LanePosition{x: 2, y: 0},
+                     LanePosition{x: 1, y: 1}],
+            L => [LanePosition{x: 0, y: 0},
+                     LanePosition{x: 1, y: 0},
+                     LanePosition{x: 2, y: 0},
+                     LanePosition{x: 0, y: 1}],
+            J => [LanePosition{x: 0, y: 0},
+                     LanePosition{x: 1, y: 0},
+                     LanePosition{x: 2, y: 0},
+                     LanePosition{x: 2, y: 1}],
+            S => [LanePosition{x: 1, y: 0},
+                     LanePosition{x: 2, y: 0},
+                     LanePosition{x: 0, y: 1},
+                     LanePosition{x: 1, y: 1}],
+            Z => [LanePosition{x: 0, y: 0},
+                     LanePosition{x: 1, y: 0},
+                     LanePosition{x: 1, y: 1},
+                     LanePosition{x: 2, y: 1}],
         }
     }
 
     fn new() -> Tetramino {
         let t_type = Tetramino::get_new_type();
         let start = Tetramino::get_new_start_pos(t_type);
-        let squares = Tetramino::get_squares(t_type, start);
-        return Tetramino{t_type: t_type, squares: squares, float_pos: 0.0, pos: start};
+        let squares = Tetramino::get_rel_pos(t_type);
+        return Tetramino{t_type: t_type, squares: squares, float_pos: 0.0, pos: start, color: RED};
     }
 
     fn move_left(&mut self) {
@@ -211,16 +230,10 @@ impl Tetramino {
         }
 
         self.pos.decr_x();
-
-        for sq in &mut self.squares {
-            sq.pos.decr_x();
-        }
     }
 
     fn move_down(&mut self) {
-        for sq in &mut self.squares {
-            sq.pos.incr_y();
-        }
+        self.pos.incr_y();
     }
 
     fn move_right(&mut self) {
@@ -229,10 +242,6 @@ impl Tetramino {
         }
 
         self.pos.incr_x();
-
-        for sq in &mut self.squares {
-            sq.pos.incr_x();
-        }
     }
 
 }
@@ -263,26 +272,11 @@ impl App {
         }
     }
 
-    fn is_square_done(&self, sq: &Square) -> bool {
-        if sq.pos.y == LAST_HEIGHT_POS {
-            return true;
-        }
-
-        for it in self.square_slots.iter() {
-            for opt in it {
-                if let &Some(ssq) = opt {
-                    if sq.pos.x == ssq.pos.x && sq.pos.y + 1 == ssq.pos.y {
-                        return true;
-                    }
-                }
-            }
-        }
-
-        return false;
-    }
-
     fn is_done(&self, t: &Tetramino) -> bool {
-        return t.squares.iter().any(|sq| self.is_square_done(sq));
+        t.squares.iter().any(|rel_pos| {
+            return t.pos.y + rel_pos.y == LAST_HEIGHT_POS
+                || self.square_slots[t.pos.x + rel_pos.x][t.pos.y + rel_pos.y+1].is_some();
+        })
     }
 
     fn clean_filled_rows(&mut self) {
@@ -314,9 +308,10 @@ impl App {
     }
 
     fn decompose_tetramino(&mut self, tetra: Tetramino) {
-        for sq in tetra.squares.iter() {
-            assert_eq!(self.square_slots[sq.pos.x][sq.pos.y].is_none(), true);
-            self.square_slots[sq.pos.x][sq.pos.y] = Some(*sq);
+        for rel_pos in tetra.squares.iter() {
+			let global_sq_pos = tetra.pos + *rel_pos;
+            assert_eq!(self.square_slots[global_sq_pos.x][global_sq_pos.y].is_none(), true);
+            self.square_slots[global_sq_pos.x][global_sq_pos.y] = Some(Square{pos: global_sq_pos, color: tetra.color});
         }
     }
 
@@ -334,6 +329,7 @@ impl App {
         }
     }
 
+    // TODO: Move "physics" to update()
     fn handle_button_input(&mut self, args: &ButtonArgs) {
         if args.state == ButtonState::Press {
             if args.button == Button::Keyboard(Key::Left) {
