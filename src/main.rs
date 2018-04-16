@@ -12,20 +12,28 @@ use opengl_graphics::{ GlGraphics, OpenGL };
 
 use rand::Rng;
 
-
-const GREEN: [f32; 4] = [0.0, 1.0, 0.0, 1.0];
+const BLUE: [f32; 4] = [0.0, 0.0, 1.0, 1.0];
 const RED: [f32; 4] = [1.0, 0.0, 0.0, 1.0];
-const GRAY: [f32; 4] = [0.5, 0.5, 0.5, 1.0];
+const GREEN: [f32; 4] = [0.0, 1.0, 0.0, 1.0];
+const CYAN: [f32; 4] = [0.0, 1.0, 1.0, 1.0];
+const YELLOW: [f32; 4] = [1.0, 1.0, 0.0, 1.0];
+const PURPLE: [f32; 4] = [1.0, 0.0, 1.0, 1.0];
+const ORANGE: [f32; 4] = [1.0, 0.5, 0.0, 1.0];
 
-const SQUARE_WIDTH: usize = 50;
+const GRAY: [f32; 4] = [0.5, 0.5, 0.5, 1.0];
+const BLACK: [f32; 4] = [0.0, 0.0, 0.0, 1.0];
+const WHITE: [f32; 4] = [1.0, 1.0, 0.0, 1.0];
+
 const BASE_MOVE_SPEED: f64 = 100.0;
 const MAX_MOVE_SPEED: f64 = 200.0;
 
-const WINDOW_HEIGHT: usize = 800;
-const WINDOW_WIDTH: usize = 400;
+const GAME_AREA_HEIGHT: usize = 600;
+const GAME_AREA_WIDTH: usize = 300;
+const SQUARE_WIDTH: usize = 30;
 
-const GAME_AREA_HEIGHT: usize = WINDOW_HEIGHT;
-const GAME_AREA_WIDTH: usize = WINDOW_WIDTH;
+const BORDER_WIDTH: usize = 2;
+const WINDOW_HEIGHT: usize = GAME_AREA_HEIGHT + BORDER_WIDTH * 2;
+const WINDOW_WIDTH: usize = GAME_AREA_WIDTH + BORDER_WIDTH * 2;
 
 const LANE_WIDTH: usize = SQUARE_WIDTH;
 const LANE_HEIGHT: usize = SQUARE_WIDTH;
@@ -78,6 +86,7 @@ impl std::ops::Add for LanePosition {
         }
     }
 }
+
 #[derive(Debug, Copy, Clone)]
 struct Square {
     pos: LanePosition,
@@ -131,6 +140,10 @@ impl TetraminoType {
             Z => 3,
         }
     }
+
+    fn get_color(_tt: TetraminoType) -> [f32; 4] {
+        return BLACK;
+    }
 }
 
 struct Tetramino {
@@ -142,11 +155,11 @@ struct Tetramino {
 }
 
 impl Square {
-    fn render(&self, gl: &mut GlGraphics, args: &RenderArgs) {
+    fn render(&self, gl: &mut GlGraphics, args: &RenderArgs, border_width: f64) {
         use graphics::*;
         let square = rectangle::square(
-            (self.pos.x * LANE_WIDTH) as f64,
-            (self.pos.y * LANE_HEIGHT) as f64,
+            (self.pos.x * LANE_WIDTH) as f64 + border_width,
+            (self.pos.y * LANE_HEIGHT) as f64 + border_width,
             SQUARE_WIDTH as f64);
         gl.draw(args.viewport(), |c, gl| {
             rectangle(self.color, square, c.transform, gl);
@@ -155,12 +168,12 @@ impl Square {
 }
 
 impl Tetramino {
-    fn render(&self, gl: &mut GlGraphics, args: &RenderArgs) {
+    fn render(&self, gl: &mut GlGraphics, args: &RenderArgs, border_width: f64) {
         use graphics::*;
         let render_squares = self.squares.iter().map(|rel_pos| {
             rectangle::square(
-            ((rel_pos.x + self.pos.x) * LANE_WIDTH) as f64,
-            ((rel_pos.y + self.pos.y) * LANE_HEIGHT) as f64,
+            ((rel_pos.x + self.pos.x) * LANE_WIDTH) as f64 + border_width,
+            ((rel_pos.y + self.pos.y) * LANE_HEIGHT) as f64 + border_width,
             SQUARE_WIDTH as f64)});
         gl.draw(args.viewport(), |c, gl| {
             for rsq in render_squares {
@@ -221,14 +234,11 @@ impl Tetramino {
         let t_type = Tetramino::get_new_type();
         let start = Tetramino::get_new_start_pos(t_type);
         let squares = Tetramino::get_rel_pos(t_type);
-        return Tetramino{t_type: t_type, squares: squares, float_pos: 0.0, pos: start, color: RED};
+        let col = TetraminoType::get_color(t_type);
+        return Tetramino{t_type: t_type, squares: squares, float_pos: 0.0, pos: start, color: col};
     }
 
     fn move_left(&mut self) {
-        if self.pos.x <= 0 {
-            return;
-        }
-
         self.pos.decr_x();
     }
 
@@ -237,10 +247,6 @@ impl Tetramino {
     }
 
     fn move_right(&mut self) {
-        if self.pos.x + TetraminoType::get_width(self.t_type) - 1 >= LAST_WIDTH_POS {
-            return;
-        }
-
         self.pos.incr_x();
     }
 
@@ -261,12 +267,12 @@ impl App {
             clear(GRAY, gl);
         });
 
-        self.tetramino.render(&mut self.gl, args);
+        self.tetramino.render(&mut self.gl, args, BORDER_WIDTH as f64);
 
         for it in self.square_slots.iter() {
-            for opt in it {
+            for opt in it.iter() {
                 if let &Some(ssq) = opt {
-                    ssq.render(&mut self.gl, args);
+                    ssq.render(&mut self.gl, args, BORDER_WIDTH  as f64);
                 }
             }
         }
@@ -329,13 +335,39 @@ impl App {
         }
     }
 
+    fn move_left(&mut self) {
+        let can_move_left = self.tetramino.pos.x != 0 && !self.tetramino.squares.iter().any(|rel_pos| {
+            let pos = self.tetramino.pos + *rel_pos;
+            return self.square_slots[pos.x - 1][pos.y].is_some();
+        });
+
+        if can_move_left {
+            self.tetramino.move_left();
+        }
+    }
+
+    fn is_at_right_edge(&self) -> bool {
+        return self.tetramino.pos.x + TetraminoType::get_width(self.tetramino.t_type) - 1 == LAST_WIDTH_POS;
+    }
+
+    fn move_right(&mut self) {
+        let can_move_right = !self.is_at_right_edge() && !self.tetramino.squares.iter().any(|rel_pos| {
+            let pos = self.tetramino.pos + *rel_pos;
+            return self.square_slots[pos.x + 1][pos.y].is_some();
+        });
+
+        if can_move_right {
+            self.tetramino.move_right();
+        }
+    }
+
     // TODO: Move "physics" to update()
     fn handle_button_input(&mut self, args: &ButtonArgs) {
         if args.state == ButtonState::Press {
             if args.button == Button::Keyboard(Key::Left) {
-                self.tetramino.move_left();
+                self.move_left();
             } else if args.button == Button::Keyboard(Key::Right) {
-                self.tetramino.move_right();
+                self.move_right();
             } else if args.button == Button::Keyboard(Key::Down) {
                 self.mov_speed = MAX_MOVE_SPEED;
             }
