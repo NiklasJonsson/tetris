@@ -27,20 +27,19 @@ const WHITE: [f32; 4] = [1.0, 1.0, 0.0, 1.0];
 const BASE_MOVE_SPEED: f64 = 100.0;
 const MAX_MOVE_SPEED: f64 = 200.0;
 
-const GAME_AREA_HEIGHT: usize = 600;
-const GAME_AREA_WIDTH: usize = 300;
 const SQUARE_WIDTH: usize = 30;
+const LANE_WIDTH: usize = SQUARE_WIDTH;
+const LANE_HEIGHT: usize = SQUARE_WIDTH;
+const N_WIDTH_LANES: usize = 10;
+const N_HEIGHT_LANES: usize = 20;
+const GAME_AREA_WIDTH: usize = LANE_WIDTH * N_WIDTH_LANES;
+const GAME_AREA_HEIGHT: usize = LANE_HEIGHT * N_HEIGHT_LANES;
+const LAST_HEIGHT_POS: usize = N_HEIGHT_LANES - 1;
+const LAST_WIDTH_POS: usize = N_WIDTH_LANES - 1;
 
 const BORDER_WIDTH: usize = 2;
 const WINDOW_HEIGHT: usize = GAME_AREA_HEIGHT + BORDER_WIDTH * 2;
 const WINDOW_WIDTH: usize = GAME_AREA_WIDTH + BORDER_WIDTH * 2;
-
-const LANE_WIDTH: usize = SQUARE_WIDTH;
-const LANE_HEIGHT: usize = SQUARE_WIDTH;
-const N_WIDTH_LANES: usize = (GAME_AREA_WIDTH / LANE_WIDTH);
-const N_HEIGHT_LANES: usize = (GAME_AREA_HEIGHT / LANE_WIDTH);
-const LAST_HEIGHT_POS: usize = N_HEIGHT_LANES - 1;
-const LAST_WIDTH_POS: usize = N_WIDTH_LANES - 1;
 
 #[derive(Debug, Copy, Clone)]
 struct LanePosition {
@@ -249,7 +248,12 @@ impl Tetramino {
     fn move_right(&mut self) {
         self.pos.incr_x();
     }
+}
 
+struct GameState {
+    move_right: bool,
+    move_left: bool,
+    paused: bool,
 }
 
 struct App {
@@ -257,6 +261,7 @@ struct App {
     square_slots: [[Option<Square>; N_HEIGHT_LANES]; N_WIDTH_LANES],
     tetramino: Tetramino,
     mov_speed: f64,
+    state: GameState,
 }
 
 impl App {
@@ -321,20 +326,6 @@ impl App {
         }
     }
 
-    fn update(&mut self, args: &UpdateArgs) {
-        if self.is_done(&self.tetramino) {
-            let old_tetra = std::mem::replace(&mut self.tetramino, Tetramino::new());
-            self.decompose_tetramino(old_tetra);
-            self.clean_filled_rows();
-        }
-
-        self.tetramino.float_pos += self.mov_speed * args.dt;
-        if self.tetramino.float_pos > LANE_HEIGHT as f64{
-            self.tetramino.float_pos = 0.0;
-            self.tetramino.move_down();
-        }
-    }
-
     fn move_left(&mut self) {
         let can_move_left = self.tetramino.pos.x != 0 && !self.tetramino.squares.iter().any(|rel_pos| {
             let pos = self.tetramino.pos + *rel_pos;
@@ -344,6 +335,8 @@ impl App {
         if can_move_left {
             self.tetramino.move_left();
         }
+
+        self.state.move_left = false;
     }
 
     fn is_at_right_edge(&self) -> bool {
@@ -359,22 +352,61 @@ impl App {
         if can_move_right {
             self.tetramino.move_right();
         }
+
+        self.state.move_right = false;
     }
 
-    // TODO: Move "physics" to update()
+    fn update(&mut self, args: &UpdateArgs) {
+        if self.state.paused {
+            return;
+        }
+
+        if self.state.move_right {
+            self.move_right()
+        }
+
+        if self.state.move_left {
+            self.move_left()
+        }
+
+        if self.is_done(&self.tetramino) {
+            let old_tetra = std::mem::replace(&mut self.tetramino, Tetramino::new());
+            self.decompose_tetramino(old_tetra);
+            self.clean_filled_rows();
+        }
+
+        self.tetramino.float_pos += self.mov_speed * args.dt;
+        if self.tetramino.float_pos > LANE_HEIGHT as f64{
+            self.tetramino.float_pos = 0.0;
+            self.tetramino.move_down();
+        }
+    }
+
     fn handle_button_input(&mut self, args: &ButtonArgs) {
         if args.state == ButtonState::Press {
             if args.button == Button::Keyboard(Key::Left) {
-                self.move_left();
+                self.state.move_left = true;
             } else if args.button == Button::Keyboard(Key::Right) {
-                self.move_right();
+                self.state.move_right = true;
             } else if args.button == Button::Keyboard(Key::Down) {
                 self.mov_speed = MAX_MOVE_SPEED;
+            } else if args.button == Button::Keyboard(Key::Space) {
+                self.state.paused = !self.state.paused;
             }
         } else if args.state == ButtonState::Release {
             if args.button == Button::Keyboard(Key::Down) {
                 self.mov_speed = BASE_MOVE_SPEED;
             }
+        }
+    }
+
+    fn new(ggl: GlGraphics) -> App {
+        App {
+            gl: ggl,
+            square_slots: [[None; N_HEIGHT_LANES]; N_WIDTH_LANES],
+            tetramino: Tetramino::new(),
+            mov_speed: BASE_MOVE_SPEED,
+            state: GameState{move_right: false, move_left: false, paused: false},
         }
     }
 }
@@ -392,11 +424,7 @@ fn main() {
         .unwrap();
 
     // Create a new game and run it.
-    let mut app = App {
-        gl: GlGraphics::new(opengl),
-        square_slots: [[None; N_HEIGHT_LANES]; N_WIDTH_LANES],
-        tetramino: Tetramino::new(),
-        mov_speed: BASE_MOVE_SPEED,
+    let mut app = App::new(GlGraphics::new(opengl)); {
     };
 
     let mut events = Events::new(EventSettings::new());
