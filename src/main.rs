@@ -151,6 +151,7 @@ struct Tetramino {
     float_pos: f64,
     pos: LanePosition,
     color: [f32; 4],
+    angle: usize
 }
 
 impl Square {
@@ -234,7 +235,7 @@ impl Tetramino {
         let start = Tetramino::get_new_start_pos(t_type);
         let squares = Tetramino::get_rel_pos(t_type);
         let col = TetraminoType::get_color(t_type);
-        return Tetramino{t_type: t_type, squares: squares, float_pos: 0.0, pos: start, color: col};
+        return Tetramino{t_type: t_type, squares: squares, float_pos: 0.0, pos: start, color: col, rot: 0.0};
     }
 
     fn move_left(&mut self) {
@@ -248,11 +249,19 @@ impl Tetramino {
     fn move_right(&mut self) {
         self.pos.incr_x();
     }
+
+    fn rot_right(&mut self) {
+    }
+
+    fn rot_left(&mut self) {
+    }
 }
 
 struct GameState {
     move_right: bool,
     move_left: bool,
+    rot_right: bool,
+    rot_left: bool,
     paused: bool,
 }
 
@@ -369,6 +378,14 @@ impl App {
             self.move_left()
         }
 
+        if self.state.rot_right {
+            self.rot_right();
+        }
+
+        if self.state.rot_left {
+            self.rot_left();
+        }
+
         if self.is_done(&self.tetramino) {
             let old_tetra = std::mem::replace(&mut self.tetramino, Tetramino::new());
             self.decompose_tetramino(old_tetra);
@@ -392,6 +409,10 @@ impl App {
                 self.mov_speed = MAX_MOVE_SPEED;
             } else if args.button == Button::Keyboard(Key::Space) {
                 self.state.paused = !self.state.paused;
+            } else if args.button == Button::Keyboard(Key::A) {
+                self.state.rot_left = true;
+            } else if args.button == Button::Keyboard(Key::D) {
+                self.state.rot_right = true;
             }
         } else if args.state == ButtonState::Release {
             if args.button == Button::Keyboard(Key::Down) {
