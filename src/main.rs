@@ -48,41 +48,83 @@ struct LanePosition {
 }
 
 impl LanePosition {
-    fn prev_x(n: usize) -> usize {
-        match n {
-            0 => 0,
-            x => x - 1
-        }
+    fn clamp_width(n: i32) -> usize {
+        return std::cmp::min(std::cmp::max(n, 0) as usize, LAST_WIDTH_POS);
+    }
+    fn clamp_height(n: i32) -> usize {
+        return std::cmp::max(n, 0) as usize;
     }
 
-    fn next_x(n: usize) -> usize {
-        match n {
-            LAST_WIDTH_POS => LAST_WIDTH_POS,
-            x => x + 1
-        }
+    fn prev_x(self) -> LanePosition {
+        LanePosition{x: LanePosition::clamp_width(self.x as i32 - 1), y: self.y}
+    }
+    fn next_x(self) -> LanePosition {
+        LanePosition{x: LanePosition::clamp_width(self.x as i32 + 1), y: self.y}
+    }
+    fn next_y(self) -> LanePosition {
+        LanePosition{x: self.x, y: LanePosition::clamp_height(self.y as i32 + 1)}
     }
 
     fn decr_x(&mut self) {
-        self.x = LanePosition::prev_x(self.x);
+        self.x = LanePosition::clamp_width(self.x as i32 - 1);
     }
-
     fn incr_x(&mut self) {
-        self.x = LanePosition::next_x(self.x);
+        self.x = LanePosition::clamp_width(self.x as i32 + 1);
     }
-
     fn incr_y(&mut self) {
-        self.y += 1;
+        self.y = LanePosition::clamp_height(self.y as i32 + 1);
     }
+}
+
+impl From<(usize, usize)> for LanePosition {
+    fn from(inp: (usize, usize)) -> Self { LanePosition{x: inp.0, y: inp.1} }
 }
 
 impl std::ops::Add for LanePosition {
     type Output = LanePosition;
 
     fn add(self, other: LanePosition) -> LanePosition {
-        LanePosition {
+        LanePosition{
             x: self.x + other.x,
             y: self.y + other.y,
         }
+    }
+}
+
+impl std::ops::Mul for LanePosition {
+    type Output = LanePosition;
+
+    fn mul(self, other: LanePosition) -> LanePosition {
+        LanePosition{
+            x: self.x * other.x,
+            y: self.y * other.y,
+        }
+    }
+}
+
+#[derive(Debug, Copy, Clone)]
+struct RelPosition {
+    x: i32,
+    y: i32
+}
+
+impl RelPosition {
+    fn rotate_clockwise(self) -> Self { RelPosition{x: self.y, y: -self.x} } 
+    fn rotate_counter_clockwise(self) -> Self { RelPosition{x: -self.y, y: self.x} } 
+    fn move_left(self) -> Self { Self{x: self.x - 1, y: self.y} }
+    fn move_right(self) -> Self { Self{x: self.x + 1, y: self.y} }
+}
+
+impl std::ops::Add<&RelPosition> for LanePosition {
+    type Output = Option<LanePosition>;
+
+    fn add(self, other: &RelPosition) -> Option<LanePosition> {
+        let x = self.x as i32 + other.x;
+        let y = self.y as i32 + other.y;
+        if x < 0 || x > LAST_WIDTH_POS as i32 || y < 0 || y > LAST_HEIGHT_POS as i32 {
+            return None;
+        }
+        Some(LanePosition{x: x as usize, y: y as usize})
     }
 }
 
@@ -147,11 +189,10 @@ impl TetraminoType {
 
 struct Tetramino {
     t_type: TetraminoType,
-    squares: [LanePosition; 4],
+    squares: [RelPosition; 4],
     float_pos: f64,
     pos: LanePosition,
     color: [f32; 4],
-    angle: usize
 }
 
 impl Square {
@@ -171,10 +212,11 @@ impl Tetramino {
     fn render(&self, gl: &mut GlGraphics, args: &RenderArgs, border_width: f64) {
         use graphics::*;
         let render_squares = self.squares.iter().map(|rel_pos| {
+            let pos: LanePosition = (self.pos + rel_pos).unwrap() * LanePosition{x: LANE_WIDTH, y: LANE_HEIGHT};
             rectangle::square(
-            ((rel_pos.x + self.pos.x) * LANE_WIDTH) as f64 + border_width,
-            ((rel_pos.y + self.pos.y) * LANE_HEIGHT) as f64 + border_width,
-            SQUARE_WIDTH as f64)});
+                pos.x as f64 + border_width,
+                pos.y as f64 + border_width,
+                SQUARE_WIDTH as f64)});
         gl.draw(args.viewport(), |c, gl| {
             for rsq in render_squares {
                 rectangle(self.color, rsq, c.transform, gl);
@@ -196,37 +238,37 @@ impl Tetramino {
         return LanePosition {x: num, y: 0};
     }
 
-    fn get_rel_pos(t_type: TetraminoType) -> [LanePosition; 4] {
+    fn get_rel_pos(t_type: TetraminoType) -> [RelPosition; 4] {
         use TetraminoType::*;
         match t_type {
-            Line => [LanePosition{x: 0, y: 0},
-                     LanePosition{x: 1, y: 0},
-                     LanePosition{x: 2, y: 0},
-                     LanePosition{x: 3, y: 0}],
-            Sq => [LanePosition{x: 0, y: 0},
-                     LanePosition{x: 1, y: 0},
-                     LanePosition{x: 0, y: 1},
-                     LanePosition{x: 1, y: 1}],
-            T => [LanePosition{x: 0, y: 0},
-                     LanePosition{x: 1, y: 0},
-                     LanePosition{x: 2, y: 0},
-                     LanePosition{x: 1, y: 1}],
-            L => [LanePosition{x: 0, y: 0},
-                     LanePosition{x: 1, y: 0},
-                     LanePosition{x: 2, y: 0},
-                     LanePosition{x: 0, y: 1}],
-            J => [LanePosition{x: 0, y: 0},
-                     LanePosition{x: 1, y: 0},
-                     LanePosition{x: 2, y: 0},
-                     LanePosition{x: 2, y: 1}],
-            S => [LanePosition{x: 1, y: 0},
-                     LanePosition{x: 2, y: 0},
-                     LanePosition{x: 0, y: 1},
-                     LanePosition{x: 1, y: 1}],
-            Z => [LanePosition{x: 0, y: 0},
-                     LanePosition{x: 1, y: 0},
-                     LanePosition{x: 1, y: 1},
-                     LanePosition{x: 2, y: 1}],
+            Line => [RelPosition{x: 0, y: 0},
+                     RelPosition{x: 1, y: 0},
+                     RelPosition{x: 2, y: 0},
+                     RelPosition{x: 3, y: 0}],
+            Sq => [RelPosition{x: 0, y: 0},
+                     RelPosition{x: 1, y: 0},
+                     RelPosition{x: 0, y: 1},
+                     RelPosition{x: 1, y: 1}],
+            T => [RelPosition{x: 0, y: 0},
+                     RelPosition{x: 1, y: 0},
+                     RelPosition{x: 2, y: 0},
+                     RelPosition{x: 1, y: 1}],
+            L => [RelPosition{x: 0, y: 0},
+                     RelPosition{x: 1, y: 0},
+                     RelPosition{x: 2, y: 0},
+                     RelPosition{x: 0, y: 1}],
+            J => [RelPosition{x: 0, y: 0},
+                     RelPosition{x: 1, y: 0},
+                     RelPosition{x: 2, y: 0},
+                     RelPosition{x: 2, y: 1}],
+            S => [RelPosition{x: 1, y: 0},
+                     RelPosition{x: 2, y: 0},
+                     RelPosition{x: 0, y: 1},
+                     RelPosition{x: 1, y: 1}],
+            Z => [RelPosition{x: 0, y: 0},
+                     RelPosition{x: 1, y: 0},
+                     RelPosition{x: 1, y: 1},
+                     RelPosition{x: 2, y: 1}],
         }
     }
 
@@ -235,7 +277,7 @@ impl Tetramino {
         let start = Tetramino::get_new_start_pos(t_type);
         let squares = Tetramino::get_rel_pos(t_type);
         let col = TetraminoType::get_color(t_type);
-        return Tetramino{t_type: t_type, squares: squares, float_pos: 0.0, pos: start, color: col, rot: 0.0};
+        return Tetramino{t_type: t_type, squares: squares, float_pos: 0.0, pos: start, color: col};
     }
 
     fn move_left(&mut self) {
@@ -250,18 +292,25 @@ impl Tetramino {
         self.pos.incr_x();
     }
 
-    fn rot_right(&mut self) {
+    fn rotate_clockwise(&mut self) {
+        for sq in &mut self.squares {
+            *sq = sq.rotate_clockwise();
+        }
     }
 
-    fn rot_left(&mut self) {
+    fn rotate_counter_clockwise(&mut self) {
+        for sq in &mut self.squares {
+            *sq = sq.rotate_counter_clockwise();
+        }
     }
 }
 
+// TODO: change to enum and associate with function
 struct GameState {
     move_right: bool,
     move_left: bool,
-    rot_right: bool,
-    rot_left: bool,
+    rotate_clockwise: bool,
+    rotate_counter_clockwise: bool,
     paused: bool,
 }
 
@@ -272,6 +321,26 @@ struct App {
     mov_speed: f64,
     state: GameState,
 }
+
+ macro_rules! gen_transform {
+        ($rotator: ident) => {
+            fn $rotator(&mut self) {
+                let can_rot = self.tetramino.squares.iter().all(|rel_pos| {
+                    let new_pos = self.tetramino.pos + &rel_pos.$rotator();
+                    match new_pos {
+                        None => false,
+                        Some(pos) => !self.has_square_at(pos),
+                    }
+                });
+
+                if can_rot {
+                    self.tetramino.$rotator();
+                }
+                self.state.$rotator = false;
+            }
+        }
+    }
+
 
 impl App {
     fn render(&mut self, args: &RenderArgs) {
@@ -292,10 +361,18 @@ impl App {
         }
     }
 
+    fn get_square_at(&self, pos: LanePosition) -> Option<Square> { self.square_slots[pos.x][pos.y] }
+    fn has_square_at(&self, pos: LanePosition) -> bool { self.square_slots[pos.x][pos.y].is_some() }
+    fn assign_square_at(&mut self, pos: LanePosition, sq: Square) {
+        assert!(!self.has_square_at(pos));
+        self.square_slots[pos.x][pos.y] = Some(sq);
+    }
+
+
     fn is_done(&self, t: &Tetramino) -> bool {
         t.squares.iter().any(|rel_pos| {
-            return t.pos.y + rel_pos.y == LAST_HEIGHT_POS
-                || self.square_slots[t.pos.x + rel_pos.x][t.pos.y + rel_pos.y+1].is_some();
+            let pos = (t.pos + rel_pos).unwrap();
+            return pos.y == LAST_HEIGHT_POS || self.has_square_at(pos.next_y());
         })
     }
 
@@ -329,41 +406,15 @@ impl App {
 
     fn decompose_tetramino(&mut self, tetra: Tetramino) {
         for rel_pos in tetra.squares.iter() {
-			let global_sq_pos = tetra.pos + *rel_pos;
-            assert_eq!(self.square_slots[global_sq_pos.x][global_sq_pos.y].is_none(), true);
-            self.square_slots[global_sq_pos.x][global_sq_pos.y] = Some(Square{pos: global_sq_pos, color: tetra.color});
+			let global_sq_pos = (tetra.pos + rel_pos).unwrap();
+            self.assign_square_at(global_sq_pos, Square{pos: global_sq_pos, color: tetra.color});
         }
     }
 
-    fn move_left(&mut self) {
-        let can_move_left = self.tetramino.pos.x != 0 && !self.tetramino.squares.iter().any(|rel_pos| {
-            let pos = self.tetramino.pos + *rel_pos;
-            return self.square_slots[pos.x - 1][pos.y].is_some();
-        });
-
-        if can_move_left {
-            self.tetramino.move_left();
-        }
-
-        self.state.move_left = false;
-    }
-
-    fn is_at_right_edge(&self) -> bool {
-        return self.tetramino.pos.x + TetraminoType::get_width(self.tetramino.t_type) - 1 == LAST_WIDTH_POS;
-    }
-
-    fn move_right(&mut self) {
-        let can_move_right = !self.is_at_right_edge() && !self.tetramino.squares.iter().any(|rel_pos| {
-            let pos = self.tetramino.pos + *rel_pos;
-            return self.square_slots[pos.x + 1][pos.y].is_some();
-        });
-
-        if can_move_right {
-            self.tetramino.move_right();
-        }
-
-        self.state.move_right = false;
-    }
+    gen_transform!(move_left);
+    gen_transform!(move_right);
+    gen_transform!(rotate_clockwise);
+    gen_transform!(rotate_counter_clockwise);
 
     fn update(&mut self, args: &UpdateArgs) {
         if self.state.paused {
@@ -378,12 +429,12 @@ impl App {
             self.move_left()
         }
 
-        if self.state.rot_right {
-            self.rot_right();
+        if self.state.rotate_clockwise {
+            self.rotate_clockwise();
         }
 
-        if self.state.rot_left {
-            self.rot_left();
+        if self.state.rotate_counter_clockwise {
+            self.rotate_counter_clockwise();
         }
 
         if self.is_done(&self.tetramino) {
@@ -410,9 +461,9 @@ impl App {
             } else if args.button == Button::Keyboard(Key::Space) {
                 self.state.paused = !self.state.paused;
             } else if args.button == Button::Keyboard(Key::A) {
-                self.state.rot_left = true;
+                self.state.rotate_counter_clockwise = true;
             } else if args.button == Button::Keyboard(Key::D) {
-                self.state.rot_right = true;
+                self.state.rotate_clockwise = true;
             }
         } else if args.state == ButtonState::Release {
             if args.button == Button::Keyboard(Key::Down) {
@@ -427,7 +478,9 @@ impl App {
             square_slots: [[None; N_HEIGHT_LANES]; N_WIDTH_LANES],
             tetramino: Tetramino::new(),
             mov_speed: BASE_MOVE_SPEED,
-            state: GameState{move_right: false, move_left: false, paused: false},
+            state: GameState{move_right: false, move_left: false,
+                             rotate_clockwise: false, rotate_counter_clockwise: false,
+                             paused: false},
         }
     }
 }
