@@ -130,7 +130,6 @@ impl std::ops::Add<&RelPosition> for LanePosition {
 
 #[derive(Debug, Copy, Clone)]
 struct Square {
-    pos: LanePosition,
     color: [f32; 4],
 }
 
@@ -193,19 +192,6 @@ struct Tetramino {
     float_pos: f64,
     pos: LanePosition,
     color: [f32; 4],
-}
-
-impl Square {
-    fn render(&self, gl: &mut GlGraphics, args: &RenderArgs, border_width: f64) {
-        use graphics::*;
-        let square = rectangle::square(
-            (self.pos.x * LANE_WIDTH) as f64 + border_width,
-            (self.pos.y * LANE_HEIGHT) as f64 + border_width,
-            SQUARE_WIDTH as f64);
-        gl.draw(args.viewport(), |c, gl| {
-            rectangle(self.color, square, c.transform, gl);
-        });
-    }
 }
 
 impl Tetramino {
@@ -316,7 +302,7 @@ struct GameState {
 
 struct App {
     gl: GlGraphics,
-    square_slots: [[Option<Square>; N_HEIGHT_LANES]; N_WIDTH_LANES],
+    square_slots: [[Option<Square>; N_WIDTH_LANES]; N_HEIGHT_LANES],
     tetramino: Tetramino,
     mov_speed: f64,
     state: GameState,
@@ -352,20 +338,26 @@ impl App {
 
         self.tetramino.render(&mut self.gl, args, BORDER_WIDTH as f64);
 
-        for it in self.square_slots.iter() {
-            for opt in it.iter() {
-                if let &Some(ssq) = opt {
-                    ssq.render(&mut self.gl, args, BORDER_WIDTH  as f64);
+        for (ri, row_it) in self.square_slots.iter().enumerate() {
+            for (ci, sq_opt) in row_it.iter().enumerate() {
+                if let Some(sq) = sq_opt {
+                    let square = rectangle::square(
+                        (ci * LANE_WIDTH + BORDER_WIDTH) as f64,
+                        (ri * LANE_HEIGHT + BORDER_WIDTH) as f64,
+                        SQUARE_WIDTH as f64);
+                    self.gl.draw(args.viewport(), |c, gl| {
+                        rectangle(sq.color, square, c.transform, gl);
+                    });
                 }
             }
         }
     }
 
-    fn get_square_at(&self, pos: LanePosition) -> Option<Square> { self.square_slots[pos.x][pos.y] }
-    fn has_square_at(&self, pos: LanePosition) -> bool { self.square_slots[pos.x][pos.y].is_some() }
+    fn get_square_at(&self, pos: LanePosition) -> Option<Square> { self.square_slots[pos.y][pos.x] }
+    fn has_square_at(&self, pos: LanePosition) -> bool { self.square_slots[pos.y][pos.x].is_some() }
     fn assign_square_at(&mut self, pos: LanePosition, sq: Square) {
         assert!(!self.has_square_at(pos));
-        self.square_slots[pos.x][pos.y] = Some(sq);
+        self.square_slots[pos.y][pos.x] = Some(sq);
     }
 
 
@@ -377,28 +369,19 @@ impl App {
     }
 
     fn clean_filled_rows(&mut self) {
-        for j in (0..N_HEIGHT_LANES).rev() {
-            let mut whole_row = true;
-            for i in 0..N_WIDTH_LANES {
-                whole_row = whole_row && self.square_slots[i][j].is_some();
+        for i in (0..N_HEIGHT_LANES).rev() {
+            let whole_row = self.square_slots[i].iter().fold(true, |acc, x| x.is_some() && acc);
+
+            if !whole_row {
+                continue;
             }
 
-            if whole_row {
-                for i in 0..N_WIDTH_LANES {
-                    self.square_slots[i][j] = None;
-                }
-
-                for r in (0..j).rev() {
-                    for c in 0..N_WIDTH_LANES {
-                        if let Some(mut sq) = self.square_slots[c][r] {
-                            if self.square_slots[c][r+1].is_none() {
-                                // TODO: Use references instead
-                                sq.pos.incr_y();
-                                self.square_slots[c][r+1] = Some(sq);
-                                self.square_slots[c][r] = None;
-                            }
-                        }
-                    }
+            for r in (0..i).rev() {
+                for c in 0..N_WIDTH_LANES {
+                    let pos = LanePosition{x: c, y: r};
+                    let sq = self.get_square_at(pos);
+                    std::mem::replace(&mut self.square_slots[pos.y + 1][pos.x], sq);
+                    std::mem::replace(&mut self.square_slots[pos.y][pos.x], None);
                 }
             }
         }
@@ -407,7 +390,7 @@ impl App {
     fn decompose_tetramino(&mut self, tetra: Tetramino) {
         for rel_pos in tetra.squares.iter() {
 			let global_sq_pos = (tetra.pos + rel_pos).unwrap();
-            self.assign_square_at(global_sq_pos, Square{pos: global_sq_pos, color: tetra.color});
+            self.assign_square_at(global_sq_pos, Square{color: tetra.color});
         }
     }
 
@@ -475,7 +458,7 @@ impl App {
     fn new(ggl: GlGraphics) -> App {
         App {
             gl: ggl,
-            square_slots: [[None; N_HEIGHT_LANES]; N_WIDTH_LANES],
+            square_slots: [[None; N_WIDTH_LANES]; N_HEIGHT_LANES],
             tetramino: Tetramino::new(),
             mov_speed: BASE_MOVE_SPEED,
             state: GameState{move_right: false, move_left: false,
