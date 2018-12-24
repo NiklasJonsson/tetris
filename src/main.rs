@@ -133,7 +133,7 @@ struct Square {
     color: [f32; 4],
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 enum TetraminoType {
     Line = 0,
     Sq = 1,
@@ -168,16 +168,11 @@ impl From<usize> for TetraminoType {
 }
 
 impl TetraminoType {
-    fn get_width(tt: TetraminoType) -> usize {
+    fn get_left_width(tt: TetraminoType) -> usize {
         use TetraminoType::*;
         match tt {
-            Line => 4,
-            Sq => 2,
-            T => 3,
-            L => 3,
-            J => 3,
-            S => 3,
-            Z => 3,
+            Line => 2,
+            _ => 1,
         }
     }
 
@@ -217,44 +212,45 @@ impl Tetramino {
     }
 
     fn get_new_start_pos(t_type: TetraminoType) -> LanePosition {
-        let last_start_pos = TetraminoType::get_width(t_type) - 1;
+        let first_start_pos = TetraminoType::get_left_width(t_type);
+        let last_start_pos = LAST_WIDTH_POS;
 
         let mut rng = rand::thread_rng();
-        let num: usize = rng.gen_range(0, last_start_pos + 1);
-        return LanePosition {x: num, y: 0};
+        let num: usize = rng.gen_range(first_start_pos, last_start_pos);
+        return LanePosition {x: num, y: 1};
     }
 
     fn get_rel_pos(t_type: TetraminoType) -> [RelPosition; 4] {
         use TetraminoType::*;
         match t_type {
-            Line => [RelPosition{x: 0, y: 0},
-                     RelPosition{x: 1, y: 0},
-                     RelPosition{x: 2, y: 0},
-                     RelPosition{x: 3, y: 0}],
-            Sq => [RelPosition{x: 0, y: 0},
-                     RelPosition{x: 1, y: 0},
-                     RelPosition{x: 0, y: 1},
-                     RelPosition{x: 1, y: 1}],
-            T => [RelPosition{x: 0, y: 0},
-                     RelPosition{x: 1, y: 0},
-                     RelPosition{x: 2, y: 0},
-                     RelPosition{x: 1, y: 1}],
-            L => [RelPosition{x: 0, y: 0},
-                     RelPosition{x: 1, y: 0},
-                     RelPosition{x: 2, y: 0},
-                     RelPosition{x: 0, y: 1}],
-            J => [RelPosition{x: 0, y: 0},
-                     RelPosition{x: 1, y: 0},
-                     RelPosition{x: 2, y: 0},
-                     RelPosition{x: 2, y: 1}],
-            S => [RelPosition{x: 1, y: 0},
-                     RelPosition{x: 2, y: 0},
-                     RelPosition{x: 0, y: 1},
-                     RelPosition{x: 1, y: 1}],
-            Z => [RelPosition{x: 0, y: 0},
-                     RelPosition{x: 1, y: 0},
-                     RelPosition{x: 1, y: 1},
-                     RelPosition{x: 2, y: 1}],
+            Line => [RelPosition{x: -2, y: -1},
+                     RelPosition{x: -1, y: -1},
+                     RelPosition{x: 0, y: -1},
+                     RelPosition{x: 1, y: -1}],
+            Sq => [RelPosition{x: -1, y: -1},
+                     RelPosition{x: 0, y: -1},
+                     RelPosition{x: -1, y: 0},
+                     RelPosition{x: 0, y: 0}],
+            T => [RelPosition{x: 0, y: -1},
+                     RelPosition{x: -1, y: 0},
+                     RelPosition{x: 0, y: 0},
+                     RelPosition{x: 1, y: 0}],
+            L => [RelPosition{x: 1, y: -1},
+                     RelPosition{x: -1, y: 0},
+                     RelPosition{x: 0, y: 0},
+                     RelPosition{x: 1, y: 0}],
+            J => [RelPosition{x: -1, y: -1},
+                     RelPosition{x: -1, y: 0},
+                     RelPosition{x: 0, y: 0},
+                     RelPosition{x: 1, y: 0}],
+            S => [RelPosition{x: 0, y: -1},
+                     RelPosition{x: 1, y: -1},
+                     RelPosition{x: -1, y: 0},
+                     RelPosition{x: 0, y: 0}],
+            Z => [RelPosition{x: -1, y: -1},
+                     RelPosition{x: 0, y: -1},
+                     RelPosition{x: 0, y: 0},
+                     RelPosition{x: 1, y: 0}],
         }
     }
 
@@ -308,24 +304,27 @@ struct App {
     state: GameState,
 }
 
- macro_rules! gen_transform {
-        ($rotator: ident) => {
-            fn $rotator(&mut self) {
-                let can_rot = self.tetramino.squares.iter().all(|rel_pos| {
-                    let new_pos = self.tetramino.pos + &rel_pos.$rotator();
-                    match new_pos {
-                        None => false,
-                        Some(pos) => !self.has_square_at(pos),
-                    }
-                });
-
-                if can_rot {
-                    self.tetramino.$rotator();
+macro_rules! gen_transform {
+    ($transform: ident, $is_rot: expr) => {
+        fn $transform(&mut self) {
+            let valid_new_pos = self.tetramino.squares.iter().all(|rel_pos| {
+                let new_pos = self.tetramino.pos + &rel_pos.$transform();
+                match new_pos {
+                    None => false,
+                    Some(pos) => !self.has_square_at(pos),
                 }
-                self.state.$rotator = false;
+            });
+
+            let can_transform = valid_new_pos &&
+                !($is_rot && self.tetramino.t_type == TetraminoType::Sq);
+
+            if can_transform {
+                self.tetramino.$transform();
             }
+            self.state.$transform = false;
         }
     }
+}
 
 
 impl App {
@@ -394,10 +393,10 @@ impl App {
         }
     }
 
-    gen_transform!(move_left);
-    gen_transform!(move_right);
-    gen_transform!(rotate_clockwise);
-    gen_transform!(rotate_counter_clockwise);
+    gen_transform!(move_left, false);
+    gen_transform!(move_right, false);
+    gen_transform!(rotate_clockwise, true);
+    gen_transform!(rotate_counter_clockwise, true);
 
     fn update(&mut self, args: &UpdateArgs) {
         if self.state.paused {
