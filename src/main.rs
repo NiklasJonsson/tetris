@@ -134,7 +134,7 @@ struct Square {
 }
 
 #[derive(Debug, Copy, Clone, PartialEq)]
-enum TetraminoType {
+enum TetrominoType {
     Line = 0,
     Sq = 1,
     T = 2,
@@ -145,9 +145,9 @@ enum TetraminoType {
 }
 
 // TODO: Generate with macro
-impl From<usize> for TetraminoType {
+impl From<usize> for TetrominoType {
     fn from(n: usize) -> Self {
-        use TetraminoType::*;
+        use TetrominoType::*;
         if n == 0 {
             return Line;
         } else if n == 1 {
@@ -167,29 +167,29 @@ impl From<usize> for TetraminoType {
     }
 }
 
-impl TetraminoType {
-    fn get_left_width(tt: TetraminoType) -> usize {
-        use TetraminoType::*;
+impl TetrominoType {
+    fn get_left_width(tt: TetrominoType) -> usize {
+        use TetrominoType::*;
         match tt {
             Line => 2,
             _ => 1,
         }
     }
 
-    fn get_color(_tt: TetraminoType) -> [f32; 4] {
+    fn get_color(_tt: TetrominoType) -> [f32; 4] {
         return BLACK;
     }
 }
 
-struct Tetramino {
-    t_type: TetraminoType,
+struct Tetromino {
+    t_type: TetrominoType,
     squares: [RelPosition; 4],
     float_pos: f64,
     pos: LanePosition,
     color: [f32; 4],
 }
 
-impl Tetramino {
+impl Tetromino {
     fn render(&self, gl: &mut GlGraphics, args: &RenderArgs, border_width: f64) {
         use graphics::*;
         let render_squares = self.squares.iter().map(|rel_pos| {
@@ -205,14 +205,14 @@ impl Tetramino {
         });
     }
 
-    fn get_new_type() -> TetraminoType {
+    fn get_new_type() -> TetrominoType {
         let mut rng = rand::thread_rng();
         let num: usize = rng.gen_range(0, 7);
-        return TetraminoType::from(num);
+        return TetrominoType::from(num);
     }
 
-    fn get_new_start_pos(t_type: TetraminoType) -> LanePosition {
-        let first_start_pos = TetraminoType::get_left_width(t_type);
+    fn get_new_start_pos(t_type: TetrominoType) -> LanePosition {
+        let first_start_pos = TetrominoType::get_left_width(t_type);
         let last_start_pos = LAST_WIDTH_POS;
 
         let mut rng = rand::thread_rng();
@@ -220,8 +220,8 @@ impl Tetramino {
         return LanePosition {x: num, y: 1};
     }
 
-    fn get_rel_pos(t_type: TetraminoType) -> [RelPosition; 4] {
-        use TetraminoType::*;
+    fn get_rel_pos(t_type: TetrominoType) -> [RelPosition; 4] {
+        use TetrominoType::*;
         match t_type {
             Line => [RelPosition{x: -2, y: 0},
                      RelPosition{x: -1, y: 0},
@@ -254,12 +254,12 @@ impl Tetramino {
         }
     }
 
-    fn new() -> Tetramino {
-        let t_type = Tetramino::get_new_type();
-        let start = Tetramino::get_new_start_pos(t_type);
-        let squares = Tetramino::get_rel_pos(t_type);
-        let col = TetraminoType::get_color(t_type);
-        return Tetramino{t_type: t_type, squares: squares, float_pos: 0.0, pos: start, color: col};
+    fn new() -> Tetromino {
+        let t_type = Tetromino::get_new_type();
+        let start = Tetromino::get_new_start_pos(t_type);
+        let squares = Tetromino::get_rel_pos(t_type);
+        let col = TetrominoType::get_color(t_type);
+        return Tetromino{t_type: t_type, squares: squares, float_pos: 0.0, pos: start, color: col};
     }
 
     fn move_left(&mut self) {
@@ -299,7 +299,7 @@ struct GameState {
 struct App {
     gl: GlGraphics,
     square_slots: [[Option<Square>; N_WIDTH_LANES]; N_HEIGHT_LANES],
-    tetramino: Tetramino,
+    tetramino: Tetromino,
     mov_speed: f64,
     state: GameState,
 }
@@ -316,7 +316,7 @@ macro_rules! gen_transform {
             });
 
             let can_transform = valid_new_pos &&
-                !($is_rot && self.tetramino.t_type == TetraminoType::Sq);
+                !($is_rot && self.tetramino.t_type == TetrominoType::Sq);
 
             if can_transform {
                 self.tetramino.$transform();
@@ -360,7 +360,7 @@ impl App {
     }
 
 
-    fn is_done(&self, t: &Tetramino) -> bool {
+    fn is_done(&self, t: &Tetromino) -> bool {
         t.squares.iter().any(|rel_pos| {
             let pos = (t.pos + rel_pos).unwrap();
             return pos.y == LAST_HEIGHT_POS || self.has_square_at(pos.next_y());
@@ -386,7 +386,7 @@ impl App {
         }
     }
 
-    fn decompose_tetramino(&mut self, tetra: Tetramino) {
+    fn decompose_tetramino(&mut self, tetra: Tetromino) {
         for rel_pos in tetra.squares.iter() {
 			let global_sq_pos = (tetra.pos + rel_pos).unwrap();
             self.assign_square_at(global_sq_pos, Square{color: tetra.color});
@@ -420,7 +420,7 @@ impl App {
         }
 
         if self.is_done(&self.tetramino) {
-            let old_tetra = std::mem::replace(&mut self.tetramino, Tetramino::new());
+            let old_tetra = std::mem::replace(&mut self.tetramino, Tetromino::new());
             self.decompose_tetramino(old_tetra);
             self.clean_filled_rows();
         }
@@ -458,7 +458,7 @@ impl App {
         App {
             gl: ggl,
             square_slots: [[None; N_WIDTH_LANES]; N_HEIGHT_LANES],
-            tetramino: Tetramino::new(),
+            tetramino: Tetromino::new(),
             mov_speed: BASE_MOVE_SPEED,
             state: GameState{move_right: false, move_left: false,
                              rotate_clockwise: false, rotate_counter_clockwise: false,
