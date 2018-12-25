@@ -80,17 +80,6 @@ impl From<(usize, usize)> for LanePosition {
     fn from(inp: (usize, usize)) -> Self { LanePosition{x: inp.0, y: inp.1} }
 }
 
-impl std::ops::Add for LanePosition {
-    type Output = LanePosition;
-
-    fn add(self, other: LanePosition) -> LanePosition {
-        LanePosition{
-            x: self.x + other.x,
-            y: self.y + other.y,
-        }
-    }
-}
-
 impl std::ops::Mul for LanePosition {
     type Output = LanePosition;
 
@@ -287,28 +276,28 @@ impl Tetromino {
     }
 }
 
-// TODO: change to enum and associate with function
-struct GameState {
-    move_right: bool,
-    move_left: bool,
-    rotate_clockwise: bool,
-    rotate_counter_clockwise: bool,
-    paused: bool,
+#[derive(Debug, Copy, Clone)]
+enum MovementState {
+    MoveRight,
+    MoveLeft,
+    RotateClockwise,
+    RotateCounterClockwise,
 }
 
 struct App {
     gl: GlGraphics,
     square_slots: [[Option<Square>; N_WIDTH_LANES]; N_HEIGHT_LANES],
-    tetramino: Tetromino,
+    tetromino: Tetromino,
     mov_speed: f64,
-    state: GameState,
+    mov_state: Option<MovementState>,
+    paused: bool,
 }
 
 macro_rules! gen_transform {
     ($transform: ident, $is_rot: expr) => {
         fn $transform(&mut self) {
-            let valid_new_pos = self.tetramino.squares.iter().all(|rel_pos| {
-                let new_pos = self.tetramino.pos + &rel_pos.$transform();
+            let valid_new_pos = self.tetromino.squares.iter().all(|rel_pos| {
+                let new_pos = self.tetromino.pos + &rel_pos.$transform();
                 match new_pos {
                     None => false,
                     Some(pos) => !self.has_square_at(pos),
@@ -316,12 +305,12 @@ macro_rules! gen_transform {
             });
 
             let can_transform = valid_new_pos &&
-                !($is_rot && self.tetramino.t_type == TetrominoType::Sq);
+                !($is_rot && self.tetromino.t_type == TetrominoType::Sq);
 
             if can_transform {
-                self.tetramino.$transform();
+                self.tetromino.$transform();
             }
-            self.state.$transform = false;
+            self.mov_state = None;
         }
     }
 }
@@ -335,7 +324,7 @@ impl App {
             clear(GRAY, gl);
         });
 
-        self.tetramino.render(&mut self.gl, args, BORDER_WIDTH as f64);
+        self.tetromino.render(&mut self.gl, args, BORDER_WIDTH as f64);
 
         for (ri, row_it) in self.square_slots.iter().enumerate() {
             for (ci, sq_opt) in row_it.iter().enumerate() {
@@ -352,7 +341,6 @@ impl App {
         }
     }
 
-    fn get_square_at(&self, pos: LanePosition) -> Option<Square> { self.square_slots[pos.y][pos.x] }
     fn has_square_at(&self, pos: LanePosition) -> bool { self.square_slots[pos.y][pos.x].is_some() }
     fn assign_square_at(&mut self, pos: LanePosition, sq: Square) {
         assert!(!self.has_square_at(pos));
@@ -368,21 +356,28 @@ impl App {
     }
 
     fn clean_filled_rows(&mut self) {
-        for i in (0..N_HEIGHT_LANES).rev() {
-            let whole_row = self.square_slots[i].iter().fold(true, |acc, x| x.is_some() && acc);
+        let mut done = false;
+        while !done {
+            let mut any_row_cleaned = false;
+            for i in (0..N_HEIGHT_LANES).rev() {
+                let whole_row = self.square_slots[i].iter().fold(true, |acc, x| x.is_some() && acc);
 
-            if !whole_row {
-                continue;
-            }
+                if !whole_row {
+                    continue;
+                }
 
-            for r in (0..i).rev() {
-                for c in 0..N_WIDTH_LANES {
-                    let pos = LanePosition{x: c, y: r};
-                    let sq = self.get_square_at(pos);
-                    std::mem::replace(&mut self.square_slots[pos.y + 1][pos.x], sq);
-                    std::mem::replace(&mut self.square_slots[pos.y][pos.x], None);
+                any_row_cleaned = true;
+
+                for r in (0..i).rev() {
+                    for c in 0..N_WIDTH_LANES {
+                        let pos = LanePosition{x: c, y: r};
+                        let sq = std::mem::replace(&mut self.square_slots[pos.y][pos.x], None);
+                        std::mem::replace(&mut self.square_slots[pos.y + 1][pos.x], sq);
+                    }
                 }
             }
+
+            done = !any_row_cleaned;
         }
     }
 
@@ -399,53 +394,48 @@ impl App {
     gen_transform!(rotate_counter_clockwise, true);
 
     fn update(&mut self, args: &UpdateArgs) {
-        if self.state.paused {
+        if self.paused {
             return;
         }
 
-        if self.state.move_right {
-            self.move_right()
+        if let Some(state) = self.mov_state {
+            use MovementState::*;
+            match state {
+                MoveRight => self.move_right(),
+                MoveLeft => self.move_left(),
+                RotateClockwise => self.rotate_clockwise(),
+                RotateCounterClockwise => self.rotate_counter_clockwise(),
+            }
         }
 
-        if self.state.move_left {
-            self.move_left()
-        }
-
-        if self.state.rotate_clockwise {
-            self.rotate_clockwise();
-        }
-
-        if self.state.rotate_counter_clockwise {
-            self.rotate_counter_clockwise();
-        }
-
-        if self.is_done(&self.tetramino) {
-            let old_tetra = std::mem::replace(&mut self.tetramino, Tetromino::new());
+        if self.is_done(&self.tetromino) {
+            let old_tetra = std::mem::replace(&mut self.tetromino, Tetromino::new());
             self.decompose_tetramino(old_tetra);
             self.clean_filled_rows();
         }
 
-        self.tetramino.float_pos += self.mov_speed * args.dt;
-        if self.tetramino.float_pos > LANE_HEIGHT as f64{
-            self.tetramino.float_pos = 0.0;
-            self.tetramino.move_down();
+        self.tetromino.float_pos += self.mov_speed * args.dt;
+        if self.tetromino.float_pos > LANE_HEIGHT as f64{
+            self.tetromino.float_pos = 0.0;
+            self.tetromino.move_down();
         }
     }
 
     fn handle_button_input(&mut self, args: &ButtonArgs) {
+        use MovementState::*;
         if args.state == ButtonState::Press {
             if args.button == Button::Keyboard(Key::Left) {
-                self.state.move_left = true;
+                self.mov_state = Some(MoveLeft);
             } else if args.button == Button::Keyboard(Key::Right) {
-                self.state.move_right = true;
+                self.mov_state = Some(MoveRight);
+            } else if args.button == Button::Keyboard(Key::A) {
+                self.mov_state = Some(RotateCounterClockwise);
+            } else if args.button == Button::Keyboard(Key::D) {
+                self.mov_state = Some(RotateClockwise);
             } else if args.button == Button::Keyboard(Key::Down) {
                 self.mov_speed = MAX_MOVE_SPEED;
             } else if args.button == Button::Keyboard(Key::Space) {
-                self.state.paused = !self.state.paused;
-            } else if args.button == Button::Keyboard(Key::A) {
-                self.state.rotate_counter_clockwise = true;
-            } else if args.button == Button::Keyboard(Key::D) {
-                self.state.rotate_clockwise = true;
+                self.paused = !self.paused;
             }
         } else if args.state == ButtonState::Release {
             if args.button == Button::Keyboard(Key::Down) {
@@ -458,11 +448,10 @@ impl App {
         App {
             gl: ggl,
             square_slots: [[None; N_WIDTH_LANES]; N_HEIGHT_LANES],
-            tetramino: Tetromino::new(),
+            tetromino: Tetromino::new(),
             mov_speed: BASE_MOVE_SPEED,
-            state: GameState{move_right: false, move_left: false,
-                             rotate_clockwise: false, rotate_counter_clockwise: false,
-                             paused: false},
+            mov_state: None,
+            paused: false,
         }
     }
 }
