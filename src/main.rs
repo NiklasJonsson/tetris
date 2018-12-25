@@ -21,8 +21,9 @@ const PURPLE: [f32; 4] = [1.0, 0.0, 1.0, 1.0];
 const ORANGE: [f32; 4] = [1.0, 0.5, 0.0, 1.0];
 
 const GRAY: [f32; 4] = [0.5, 0.5, 0.5, 1.0];
+const DARK_GRAY: [f32; 4] = [0.25, 0.25, 0.25, 1.0];
 const BLACK: [f32; 4] = [0.0, 0.0, 0.0, 1.0];
-const WHITE: [f32; 4] = [1.0, 1.0, 0.0, 1.0];
+const WHITE: [f32; 4] = [1.0, 1.0, 1.0, 1.0];
 
 const BASE_MOVE_SPEED: f64 = 100.0;
 const MAX_MOVE_SPEED: f64 = 200.0;
@@ -32,14 +33,19 @@ const LANE_WIDTH: usize = SQUARE_WIDTH;
 const LANE_HEIGHT: usize = SQUARE_WIDTH;
 const N_WIDTH_LANES: usize = 10;
 const N_HEIGHT_LANES: usize = 20;
-const GAME_AREA_WIDTH: usize = LANE_WIDTH * N_WIDTH_LANES;
-const GAME_AREA_HEIGHT: usize = LANE_HEIGHT * N_HEIGHT_LANES;
 const LAST_HEIGHT_POS: usize = N_HEIGHT_LANES - 1;
 const LAST_WIDTH_POS: usize = N_WIDTH_LANES - 1;
 
+
+const GAME_AREA_WIDTH: usize = LANE_WIDTH * N_WIDTH_LANES;
+const GAME_AREA_HEIGHT: usize = LANE_HEIGHT * N_HEIGHT_LANES;
+const TEXT_AREA_WIDTH: usize = GAME_AREA_WIDTH;
+const TEXT_AREA_HEIGHT: usize = GAME_AREA_WIDTH;
 const BORDER_WIDTH: usize = 2;
+const SEPARATOR_WIDTH: usize = 4;
+const SEPARATOR_TOP_BOT_SPACING:usize = SQUARE_WIDTH / 2;
 const WINDOW_HEIGHT: usize = GAME_AREA_HEIGHT + BORDER_WIDTH * 2;
-const WINDOW_WIDTH: usize = GAME_AREA_WIDTH + BORDER_WIDTH * 2;
+const WINDOW_WIDTH: usize = GAME_AREA_WIDTH + TEXT_AREA_WIDTH + BORDER_WIDTH * 4 + SEPARATOR_WIDTH;
 
 #[derive(Debug, Copy, Clone)]
 struct LanePosition {
@@ -339,6 +345,13 @@ impl App {
                 }
             }
         }
+
+        let sep = rectangle::rectangle_by_corners(
+            (GAME_AREA_WIDTH + BORDER_WIDTH * 2) as f64, SEPARATOR_TOP_BOT_SPACING as f64,
+            (GAME_AREA_WIDTH + BORDER_WIDTH * 2 + SEPARATOR_WIDTH) as f64, (WINDOW_HEIGHT - SEPARATOR_TOP_BOT_SPACING) as f64);
+        self.gl.draw(args.viewport(), |c, gl| {
+            rectangle(DARK_GRAY, sep, c.transform, gl);
+        });
     }
 
     fn has_square_at(&self, pos: LanePosition) -> bool { self.square_slots[pos.y][pos.x].is_some() }
