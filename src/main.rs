@@ -8,17 +8,9 @@ use piston::window::WindowSettings;
 use piston::event_loop::*;
 use piston::input::*;
 use glutin_window::GlutinWindow as Window;
-use opengl_graphics::{ GlGraphics, OpenGL };
+use opengl_graphics::{ GlGraphics, OpenGL, GlyphCache, TextureSettings };
 
 use rand::Rng;
-
-const BLUE: [f32; 4] = [0.0, 0.0, 1.0, 1.0];
-const RED: [f32; 4] = [1.0, 0.0, 0.0, 1.0];
-const GREEN: [f32; 4] = [0.0, 1.0, 0.0, 1.0];
-const CYAN: [f32; 4] = [0.0, 1.0, 1.0, 1.0];
-const YELLOW: [f32; 4] = [1.0, 1.0, 0.0, 1.0];
-const PURPLE: [f32; 4] = [1.0, 0.0, 1.0, 1.0];
-const ORANGE: [f32; 4] = [1.0, 0.5, 0.0, 1.0];
 
 const GRAY: [f32; 4] = [0.5, 0.5, 0.5, 1.0];
 const DARK_GRAY: [f32; 4] = [0.25, 0.25, 0.25, 1.0];
@@ -36,11 +28,9 @@ const N_HEIGHT_LANES: usize = 20;
 const LAST_HEIGHT_POS: usize = N_HEIGHT_LANES - 1;
 const LAST_WIDTH_POS: usize = N_WIDTH_LANES - 1;
 
-
 const GAME_AREA_WIDTH: usize = LANE_WIDTH * N_WIDTH_LANES;
 const GAME_AREA_HEIGHT: usize = LANE_HEIGHT * N_HEIGHT_LANES;
 const TEXT_AREA_WIDTH: usize = GAME_AREA_WIDTH;
-const TEXT_AREA_HEIGHT: usize = GAME_AREA_WIDTH;
 const BORDER_WIDTH: usize = 2;
 const SEPARATOR_WIDTH: usize = 4;
 const SEPARATOR_TOP_BOT_SPACING:usize = SQUARE_WIDTH / 2;
@@ -61,12 +51,6 @@ impl LanePosition {
         return std::cmp::max(n, 0) as usize;
     }
 
-    fn prev_x(self) -> LanePosition {
-        LanePosition{x: LanePosition::clamp_width(self.x as i32 - 1), y: self.y}
-    }
-    fn next_x(self) -> LanePosition {
-        LanePosition{x: LanePosition::clamp_width(self.x as i32 + 1), y: self.y}
-    }
     fn next_y(self) -> LanePosition {
         LanePosition{x: self.x, y: LanePosition::clamp_height(self.y as i32 + 1)}
     }
@@ -139,7 +123,6 @@ enum TetrominoType {
     Z = 6
 }
 
-// TODO: Generate with macro
 impl From<usize> for TetrominoType {
     fn from(n: usize) -> Self {
         use TetrominoType::*;
@@ -297,6 +280,7 @@ struct App {
     mov_speed: f64,
     mov_state: Option<MovementState>,
     paused: bool,
+    score: usize,
 }
 
 macro_rules! gen_transform {
@@ -323,11 +307,10 @@ macro_rules! gen_transform {
 
 
 impl App {
-    fn render(&mut self, args: &RenderArgs) {
-        use graphics::*;
+    fn render(&mut self, args: &RenderArgs, font_cache: &mut GlyphCache) {
 
         self.gl.draw(args.viewport(), |_, gl| {
-            clear(GRAY, gl);
+            graphics::clear(GRAY, gl);
         });
 
         self.tetromino.render(&mut self.gl, args, BORDER_WIDTH as f64);
@@ -335,22 +318,34 @@ impl App {
         for (ri, row_it) in self.square_slots.iter().enumerate() {
             for (ci, sq_opt) in row_it.iter().enumerate() {
                 if let Some(sq) = sq_opt {
-                    let square = rectangle::square(
+                    let square = graphics::rectangle::square(
                         (ci * LANE_WIDTH + BORDER_WIDTH) as f64,
                         (ri * LANE_HEIGHT + BORDER_WIDTH) as f64,
                         SQUARE_WIDTH as f64);
                     self.gl.draw(args.viewport(), |c, gl| {
-                        rectangle(sq.color, square, c.transform, gl);
+                        graphics::rectangle(sq.color, square, c.transform, gl);
                     });
                 }
             }
         }
 
-        let sep = rectangle::rectangle_by_corners(
-            (GAME_AREA_WIDTH + BORDER_WIDTH * 2) as f64, SEPARATOR_TOP_BOT_SPACING as f64,
-            (GAME_AREA_WIDTH + BORDER_WIDTH * 2 + SEPARATOR_WIDTH) as f64, (WINDOW_HEIGHT - SEPARATOR_TOP_BOT_SPACING) as f64);
+        let sep = graphics::rectangle::rectangle_by_corners(
+            (GAME_AREA_WIDTH + BORDER_WIDTH * 2) as f64,
+            SEPARATOR_TOP_BOT_SPACING as f64,
+            (GAME_AREA_WIDTH + BORDER_WIDTH * 2 + SEPARATOR_WIDTH) as f64,
+            (WINDOW_HEIGHT - SEPARATOR_TOP_BOT_SPACING) as f64);
         self.gl.draw(args.viewport(), |c, gl| {
-            rectangle(DARK_GRAY, sep, c.transform, gl);
+            graphics::rectangle(DARK_GRAY, sep, c.transform, gl);
+        });
+
+        use graphics::Transformed;
+
+        let text_area_start = GAME_AREA_WIDTH + BORDER_WIDTH * 2 + SEPARATOR_WIDTH + SQUARE_WIDTH;
+        let score = self.score;
+        self.gl.draw(args.viewport(), |c, gl| {
+            let text = format!("Score: {}", score);
+            let transform = c.transform.trans(text_area_start as f64, (SQUARE_WIDTH * 2) as f64);
+            graphics::text(WHITE, 24, &text.as_str(), font_cache, transform, gl).unwrap();
         });
     }
 
@@ -359,7 +354,6 @@ impl App {
         assert!(!self.has_square_at(pos));
         self.square_slots[pos.y][pos.x] = Some(sq);
     }
-
 
     fn is_done(&self, t: &Tetromino) -> bool {
         t.squares.iter().any(|rel_pos| {
@@ -380,6 +374,7 @@ impl App {
                 }
 
                 any_row_cleaned = true;
+                self.score += 10;
 
                 for r in (0..i).rev() {
                     for c in 0..N_WIDTH_LANES {
@@ -465,6 +460,7 @@ impl App {
             mov_speed: BASE_MOVE_SPEED,
             mov_state: None,
             paused: false,
+            score: 0,
         }
     }
 }
@@ -481,14 +477,15 @@ fn main() {
         .build()
         .unwrap();
 
-    // Create a new game and run it.
+    let ref mut glyphs = GlyphCache::new("assets/FiraSans-Regular.ttf", (), TextureSettings::new()).expect("Could not load font");
+
     let mut app = App::new(GlGraphics::new(opengl)); {
     };
 
     let mut events = Events::new(EventSettings::new());
     while let Some(e) = events.next(&mut window) {
         if let Some(r) = e.render_args() {
-            app.render(&r);
+            app.render(&r, glyphs);
         }
 
         if let Some(u) = e.update_args() {
