@@ -223,10 +223,10 @@ impl Tetramino {
     fn get_rel_pos(t_type: TetraminoType) -> [RelPosition; 4] {
         use TetraminoType::*;
         match t_type {
-            Line => [RelPosition{x: -2, y: -1},
-                     RelPosition{x: -1, y: -1},
-                     RelPosition{x: 0, y: -1},
-                     RelPosition{x: 1, y: -1}],
+            Line => [RelPosition{x: -2, y: 0},
+                     RelPosition{x: -1, y: 0},
+                     RelPosition{x: 0, y: 0},
+                     RelPosition{x: 1, y: 0}],
             Sq => [RelPosition{x: -1, y: -1},
                      RelPosition{x: 0, y: -1},
                      RelPosition{x: -1, y: 0},
