@@ -340,13 +340,24 @@ impl App {
 
         use graphics::Transformed;
 
-        let text_area_start = GAME_AREA_WIDTH + BORDER_WIDTH * 2 + SEPARATOR_WIDTH + SQUARE_WIDTH;
+        let text_area_start = GAME_AREA_WIDTH + BORDER_WIDTH * 2 + SEPARATOR_WIDTH + SQUARE_WIDTH/4;
         let score = self.score;
         self.gl.draw(args.viewport(), |c, gl| {
-            let text = format!("Score: {}", score);
             let transform = c.transform.trans(text_area_start as f64, (SQUARE_WIDTH * 2) as f64);
-            graphics::text(WHITE, 24, &text.as_str(), font_cache, transform, gl).unwrap();
+            let text = format!("Score: {}", score);
+            graphics::text(WHITE, 24, text.as_str(), font_cache, transform, gl).unwrap();
         });
+
+        let ctrl_ta_text = ["Controls:", "->: Move right", "<-: Move left", "D: Rotate clockwise",
+                            "A: Rotate counter clockwise", "Space: Pause"];
+        for (i, text) in ctrl_ta_text.iter().enumerate() {
+            self.gl.draw(args.viewport(), |c, gl| {
+                let transform = c.transform.trans(text_area_start as f64, (SQUARE_WIDTH * 2) as f64);
+                let ctrl_ta_transform = transform.trans(0.0, (SQUARE_WIDTH * 2) as f64);
+                let trfm = ctrl_ta_transform.trans(0.0, (i * SQUARE_WIDTH) as f64);
+                graphics::text(WHITE, 24, text, font_cache, trfm, gl).unwrap();
+            });
+        }
     }
 
     fn has_square_at(&self, pos: LanePosition) -> bool { self.square_slots[pos.y][pos.x].is_some() }
