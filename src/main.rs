@@ -189,15 +189,7 @@ impl Tetromino {
         return TetrominoType::from(num);
     }
 
-    fn get_new_start_pos(t_type: TetrominoType) -> LanePosition {
-        let first_start_pos = TetrominoType::get_left_width(t_type);
-        let last_start_pos = LAST_WIDTH_POS;
-
-        let mut rng = rand::thread_rng();
-        let num: usize = rng.gen_range(first_start_pos, last_start_pos);
-        return LanePosition {x: num, y: 1};
-    }
-
+  
     fn get_rel_pos(t_type: TetrominoType) -> [RelPosition; 4] {
         use TetrominoType::*;
         match t_type {
@@ -230,14 +222,6 @@ impl Tetromino {
                      RelPosition{x: 0, y: 0},
                      RelPosition{x: 1, y: 0}],
         }
-    }
-
-    fn new() -> Tetromino {
-        let t_type = Tetromino::get_new_type();
-        let start = Tetromino::get_new_start_pos(t_type);
-        let squares = Tetromino::get_rel_pos(t_type);
-        let col = TetrominoType::get_color(t_type);
-        return Tetromino{t_type: t_type, squares: squares, float_pos: 0.0, pos: start, color: col};
     }
 
     fn move_left(&mut self) {
@@ -307,6 +291,11 @@ macro_rules! gen_transform {
 
 
 impl App {
+    gen_transform!(move_left, false);
+    gen_transform!(move_right, false);
+    gen_transform!(rotate_clockwise, true);
+    gen_transform!(rotate_counter_clockwise, true);
+
     fn render(&mut self, args: &RenderArgs, font_cache: &mut GlyphCache) {
 
         self.gl.draw(args.viewport(), |_, gl| {
@@ -400,17 +389,61 @@ impl App {
         }
     }
 
-    fn decompose_tetramino(&mut self, tetra: Tetromino) {
-        for rel_pos in tetra.squares.iter() {
-			let global_sq_pos = (tetra.pos + rel_pos).unwrap();
-            self.assign_square_at(global_sq_pos, Square{color: tetra.color});
+    fn decompose_tetromino(&mut self, tetro: Tetromino) {
+        for rel_pos in tetro.squares.iter() {
+			let global_sq_pos = (tetro.pos + rel_pos).unwrap();
+            self.assign_square_at(global_sq_pos, Square{color: tetro.color});
         }
     }
 
-    gen_transform!(move_left, false);
-    gen_transform!(move_right, false);
-    gen_transform!(rotate_clockwise, true);
-    gen_transform!(rotate_counter_clockwise, true);
+    fn first_tetromino() -> Tetromino {
+        let t_type = Tetromino::get_new_type();
+        let squares = Tetromino::get_rel_pos(t_type);
+        let col = TetrominoType::get_color(t_type);
+
+        let first_start_pos = TetrominoType::get_left_width(t_type);
+        let last_start_pos = LAST_WIDTH_POS;
+
+        let mut rng = rand::thread_rng();
+        let num: usize = rng.gen_range(first_start_pos, last_start_pos);
+        let start = LanePosition {x: num, y: 1};
+        let tetro = Tetromino{t_type: t_type, squares: squares, float_pos: 0.0, pos: start, color: col};
+        return tetro;
+    }
+
+    fn get_new_tetromino(&self) -> Option<Tetromino> {
+        let t_type = Tetromino::get_new_type();
+        let squares = Tetromino::get_rel_pos(t_type);
+        let col = TetrominoType::get_color(t_type);
+
+        let first_start_pos = TetrominoType::get_left_width(t_type);
+        let last_start_pos = LAST_WIDTH_POS;
+
+        let mut rng = rand::thread_rng();
+        let num: usize = rng.gen_range(first_start_pos, last_start_pos);
+        let start = LanePosition {x: num, y: 1};
+        let tetro = Tetromino{t_type: t_type, squares: squares, float_pos: 0.0, pos: start, color: col};
+
+        for rel_pos in tetro.squares.iter() {
+			let global_sq_pos = (tetro.pos + rel_pos).unwrap();
+            if self.has_square_at(global_sq_pos) {
+                return None;
+            }
+        }
+
+        return Some(tetro);
+    }
+
+    fn restart(&mut self) {
+        self.paused = true;
+        // Clear slots
+        for r in 0..N_HEIGHT_LANES {
+            for c in 0..N_WIDTH_LANES {
+                self.square_slots[r][c] = None
+            }
+        }
+        std::mem::replace(&mut self.tetromino, App::first_tetromino());
+    }
 
     fn update(&mut self, args: &UpdateArgs) {
         if self.paused {
@@ -428,8 +461,15 @@ impl App {
         }
 
         if self.is_done(&self.tetromino) {
-            let old_tetra = std::mem::replace(&mut self.tetromino, Tetromino::new());
-            self.decompose_tetramino(old_tetra);
+            let new_tetro = self.get_new_tetromino();
+            if new_tetro.is_none() {
+                // Game over
+                self.restart();
+                return;
+            }
+
+            let old_tetro = std::mem::replace(&mut self.tetromino, new_tetro.unwrap());
+            self.decompose_tetromino(old_tetro);
             self.clean_filled_rows();
         }
 
@@ -467,7 +507,7 @@ impl App {
         App {
             gl: ggl,
             square_slots: [[None; N_WIDTH_LANES]; N_HEIGHT_LANES],
-            tetromino: Tetromino::new(),
+            tetromino: App::first_tetromino(),
             mov_speed: BASE_MOVE_SPEED,
             mov_state: None,
             paused: false,
