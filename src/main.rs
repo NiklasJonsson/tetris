@@ -1,14 +1,14 @@
-extern crate piston;
-extern crate graphics;
 extern crate glutin_window;
+extern crate graphics;
 extern crate opengl_graphics;
+extern crate piston;
 extern crate rand;
 
-use piston::window::WindowSettings;
+use glutin_window::GlutinWindow as Window;
+use opengl_graphics::{GlGraphics, GlyphCache, OpenGL, TextureSettings};
 use piston::event_loop::*;
 use piston::input::*;
-use glutin_window::GlutinWindow as Window;
-use opengl_graphics::{ GlGraphics, OpenGL, GlyphCache, TextureSettings };
+use piston::window::WindowSettings;
 
 use rand::Rng;
 
@@ -33,14 +33,14 @@ const GAME_AREA_HEIGHT: usize = LANE_HEIGHT * N_HEIGHT_LANES;
 const TEXT_AREA_WIDTH: usize = GAME_AREA_WIDTH;
 const BORDER_WIDTH: usize = 2;
 const SEPARATOR_WIDTH: usize = 4;
-const SEPARATOR_TOP_BOT_SPACING:usize = SQUARE_WIDTH / 2;
+const SEPARATOR_TOP_BOT_SPACING: usize = SQUARE_WIDTH / 2;
 const WINDOW_HEIGHT: usize = GAME_AREA_HEIGHT + BORDER_WIDTH * 2;
 const WINDOW_WIDTH: usize = GAME_AREA_WIDTH + TEXT_AREA_WIDTH + BORDER_WIDTH * 4 + SEPARATOR_WIDTH;
 
 #[derive(Debug, Copy, Clone)]
 struct LanePosition {
     x: usize,
-    y: usize
+    y: usize,
 }
 
 impl LanePosition {
@@ -52,7 +52,10 @@ impl LanePosition {
     }
 
     fn next_y(self) -> LanePosition {
-        LanePosition{x: self.x, y: LanePosition::clamp_height(self.y as i32 + 1)}
+        LanePosition {
+            x: self.x,
+            y: LanePosition::clamp_height(self.y as i32 + 1),
+        }
     }
 
     fn decr_x(&mut self) {
@@ -67,14 +70,16 @@ impl LanePosition {
 }
 
 impl From<(usize, usize)> for LanePosition {
-    fn from(inp: (usize, usize)) -> Self { LanePosition{x: inp.0, y: inp.1} }
+    fn from(inp: (usize, usize)) -> Self {
+        LanePosition { x: inp.0, y: inp.1 }
+    }
 }
 
 impl std::ops::Mul for LanePosition {
     type Output = LanePosition;
 
     fn mul(self, other: LanePosition) -> LanePosition {
-        LanePosition{
+        LanePosition {
             x: self.x * other.x,
             y: self.y * other.y,
         }
@@ -84,14 +89,34 @@ impl std::ops::Mul for LanePosition {
 #[derive(Debug, Copy, Clone)]
 struct RelPosition {
     x: i32,
-    y: i32
+    y: i32,
 }
 
 impl RelPosition {
-    fn rotate_clockwise(self) -> Self { RelPosition{x: self.y, y: -self.x} } 
-    fn rotate_counter_clockwise(self) -> Self { RelPosition{x: -self.y, y: self.x} } 
-    fn move_left(self) -> Self { Self{x: self.x - 1, y: self.y} }
-    fn move_right(self) -> Self { Self{x: self.x + 1, y: self.y} }
+    fn rotate_clockwise(self) -> Self {
+        RelPosition {
+            x: self.y,
+            y: -self.x,
+        }
+    }
+    fn rotate_counter_clockwise(self) -> Self {
+        RelPosition {
+            x: -self.y,
+            y: self.x,
+        }
+    }
+    fn move_left(self) -> Self {
+        Self {
+            x: self.x - 1,
+            y: self.y,
+        }
+    }
+    fn move_right(self) -> Self {
+        Self {
+            x: self.x + 1,
+            y: self.y,
+        }
+    }
 }
 
 impl std::ops::Add<&RelPosition> for LanePosition {
@@ -103,7 +128,10 @@ impl std::ops::Add<&RelPosition> for LanePosition {
         if x < 0 || x > LAST_WIDTH_POS as i32 || y < 0 || y > LAST_HEIGHT_POS as i32 {
             return None;
         }
-        Some(LanePosition{x: x as usize, y: y as usize})
+        Some(LanePosition {
+            x: x as usize,
+            y: y as usize,
+        })
     }
 }
 
@@ -120,7 +148,7 @@ enum TetrominoType {
     L = 3,
     J = 4,
     S = 5,
-    Z = 6
+    Z = 6,
 }
 
 impl From<usize> for TetrominoType {
@@ -159,6 +187,7 @@ impl TetrominoType {
     }
 }
 
+#[derive(Debug)]
 struct Tetromino {
     t_type: TetrominoType,
     squares: [RelPosition; 4],
@@ -171,11 +200,17 @@ impl Tetromino {
     fn render(&self, gl: &mut GlGraphics, args: &RenderArgs, border_width: f64) {
         use graphics::*;
         let render_squares = self.squares.iter().map(|rel_pos| {
-            let pos: LanePosition = (self.pos + rel_pos).unwrap() * LanePosition{x: LANE_WIDTH, y: LANE_HEIGHT};
+            let pos: LanePosition = (self.pos + rel_pos).unwrap()
+                * LanePosition {
+                    x: LANE_WIDTH,
+                    y: LANE_HEIGHT,
+                };
             rectangle::square(
                 pos.x as f64 + border_width,
                 pos.y as f64 + border_width,
-                SQUARE_WIDTH as f64)});
+                SQUARE_WIDTH as f64,
+            )
+        });
         gl.draw(args.viewport(), |c, gl| {
             for rsq in render_squares {
                 rectangle(self.color, rsq, c.transform, gl);
@@ -189,38 +224,51 @@ impl Tetromino {
         return TetrominoType::from(num);
     }
 
-  
     fn get_rel_pos(t_type: TetrominoType) -> [RelPosition; 4] {
         use TetrominoType::*;
         match t_type {
-            Line => [RelPosition{x: -2, y: 0},
-                     RelPosition{x: -1, y: 0},
-                     RelPosition{x: 0, y: 0},
-                     RelPosition{x: 1, y: 0}],
-            Sq => [RelPosition{x: -1, y: -1},
-                     RelPosition{x: 0, y: -1},
-                     RelPosition{x: -1, y: 0},
-                     RelPosition{x: 0, y: 0}],
-            T => [RelPosition{x: 0, y: -1},
-                     RelPosition{x: -1, y: 0},
-                     RelPosition{x: 0, y: 0},
-                     RelPosition{x: 1, y: 0}],
-            L => [RelPosition{x: 1, y: -1},
-                     RelPosition{x: -1, y: 0},
-                     RelPosition{x: 0, y: 0},
-                     RelPosition{x: 1, y: 0}],
-            J => [RelPosition{x: -1, y: -1},
-                     RelPosition{x: -1, y: 0},
-                     RelPosition{x: 0, y: 0},
-                     RelPosition{x: 1, y: 0}],
-            S => [RelPosition{x: 0, y: -1},
-                     RelPosition{x: 1, y: -1},
-                     RelPosition{x: -1, y: 0},
-                     RelPosition{x: 0, y: 0}],
-            Z => [RelPosition{x: -1, y: -1},
-                     RelPosition{x: 0, y: -1},
-                     RelPosition{x: 0, y: 0},
-                     RelPosition{x: 1, y: 0}],
+            Line => [
+                RelPosition { x: -2, y: 0 },
+                RelPosition { x: -1, y: 0 },
+                RelPosition { x: 0, y: 0 },
+                RelPosition { x: 1, y: 0 },
+            ],
+            Sq => [
+                RelPosition { x: -1, y: -1 },
+                RelPosition { x: 0, y: -1 },
+                RelPosition { x: -1, y: 0 },
+                RelPosition { x: 0, y: 0 },
+            ],
+            T => [
+                RelPosition { x: 0, y: -1 },
+                RelPosition { x: -1, y: 0 },
+                RelPosition { x: 0, y: 0 },
+                RelPosition { x: 1, y: 0 },
+            ],
+            L => [
+                RelPosition { x: 1, y: -1 },
+                RelPosition { x: -1, y: 0 },
+                RelPosition { x: 0, y: 0 },
+                RelPosition { x: 1, y: 0 },
+            ],
+            J => [
+                RelPosition { x: -1, y: -1 },
+                RelPosition { x: -1, y: 0 },
+                RelPosition { x: 0, y: 0 },
+                RelPosition { x: 1, y: 0 },
+            ],
+            S => [
+                RelPosition { x: 0, y: -1 },
+                RelPosition { x: 1, y: -1 },
+                RelPosition { x: -1, y: 0 },
+                RelPosition { x: 0, y: 0 },
+            ],
+            Z => [
+                RelPosition { x: -1, y: -1 },
+                RelPosition { x: 0, y: -1 },
+                RelPosition { x: 0, y: 0 },
+                RelPosition { x: 1, y: 0 },
+            ],
         }
     }
 
@@ -289,7 +337,6 @@ macro_rules! gen_transform {
     }
 }
 
-
 impl App {
     gen_transform!(move_left, false);
     gen_transform!(move_right, false);
@@ -297,12 +344,12 @@ impl App {
     gen_transform!(rotate_counter_clockwise, true);
 
     fn render(&mut self, args: &RenderArgs, font_cache: &mut GlyphCache) {
-
         self.gl.draw(args.viewport(), |_, gl| {
             graphics::clear(GRAY, gl);
         });
 
-        self.tetromino.render(&mut self.gl, args, BORDER_WIDTH as f64);
+        self.tetromino
+            .render(&mut self.gl, args, BORDER_WIDTH as f64);
 
         for (ri, row_it) in self.square_slots.iter().enumerate() {
             for (ci, sq_opt) in row_it.iter().enumerate() {
@@ -310,7 +357,8 @@ impl App {
                     let square = graphics::rectangle::square(
                         (ci * LANE_WIDTH + BORDER_WIDTH) as f64,
                         (ri * LANE_HEIGHT + BORDER_WIDTH) as f64,
-                        SQUARE_WIDTH as f64);
+                        SQUARE_WIDTH as f64,
+                    );
                     self.gl.draw(args.viewport(), |c, gl| {
                         graphics::rectangle(sq.color, square, c.transform, gl);
                     });
@@ -322,26 +370,38 @@ impl App {
             (GAME_AREA_WIDTH + BORDER_WIDTH * 2) as f64,
             SEPARATOR_TOP_BOT_SPACING as f64,
             (GAME_AREA_WIDTH + BORDER_WIDTH * 2 + SEPARATOR_WIDTH) as f64,
-            (WINDOW_HEIGHT - SEPARATOR_TOP_BOT_SPACING) as f64);
+            (WINDOW_HEIGHT - SEPARATOR_TOP_BOT_SPACING) as f64,
+        );
         self.gl.draw(args.viewport(), |c, gl| {
             graphics::rectangle(DARK_GRAY, sep, c.transform, gl);
         });
 
         use graphics::Transformed;
 
-        let text_area_start = GAME_AREA_WIDTH + BORDER_WIDTH * 2 + SEPARATOR_WIDTH + SQUARE_WIDTH/4;
+        let text_area_start =
+            GAME_AREA_WIDTH + BORDER_WIDTH * 2 + SEPARATOR_WIDTH + SQUARE_WIDTH / 4;
         let score = self.score;
         self.gl.draw(args.viewport(), |c, gl| {
-            let transform = c.transform.trans(text_area_start as f64, (SQUARE_WIDTH * 2) as f64);
+            let transform = c
+                .transform
+                .trans(text_area_start as f64, (SQUARE_WIDTH * 2) as f64);
             let text = format!("Score: {}", score);
             graphics::text(WHITE, 24, text.as_str(), font_cache, transform, gl).unwrap();
         });
 
-        let ctrl_ta_text = ["Controls:", "->: Move right", "<-: Move left", "D: Rotate clockwise",
-                            "A: Rotate counter clockwise", "Space: Pause"];
+        let ctrl_ta_text = [
+            "Controls:",
+            "->: Move right",
+            "<-: Move left",
+            "D: Rotate clockwise",
+            "A: Rotate counter clockwise",
+            "Space: Pause",
+        ];
         for (i, text) in ctrl_ta_text.iter().enumerate() {
             self.gl.draw(args.viewport(), |c, gl| {
-                let transform = c.transform.trans(text_area_start as f64, (SQUARE_WIDTH * 2) as f64);
+                let transform = c
+                    .transform
+                    .trans(text_area_start as f64, (SQUARE_WIDTH * 2) as f64);
                 let ctrl_ta_transform = transform.trans(0.0, (SQUARE_WIDTH * 2) as f64);
                 let trfm = ctrl_ta_transform.trans(0.0, (i * SQUARE_WIDTH) as f64);
                 graphics::text(WHITE, 24, text, font_cache, trfm, gl).unwrap();
@@ -349,7 +409,9 @@ impl App {
         }
     }
 
-    fn has_square_at(&self, pos: LanePosition) -> bool { self.square_slots[pos.y][pos.x].is_some() }
+    fn has_square_at(&self, pos: LanePosition) -> bool {
+        self.square_slots[pos.y][pos.x].is_some()
+    }
     fn assign_square_at(&mut self, pos: LanePosition, sq: Square) {
         assert!(!self.has_square_at(pos));
         self.square_slots[pos.y][pos.x] = Some(sq);
@@ -367,7 +429,9 @@ impl App {
         while !done {
             let mut any_row_cleaned = false;
             for i in (0..N_HEIGHT_LANES).rev() {
-                let whole_row = self.square_slots[i].iter().fold(true, |acc, x| x.is_some() && acc);
+                let whole_row = self.square_slots[i]
+                    .iter()
+                    .fold(true, |acc, x| x.is_some() && acc);
 
                 if !whole_row {
                     continue;
@@ -378,7 +442,7 @@ impl App {
 
                 for r in (0..i).rev() {
                     for c in 0..N_WIDTH_LANES {
-                        let pos = LanePosition{x: c, y: r};
+                        let pos = LanePosition { x: c, y: r };
                         let sq = std::mem::replace(&mut self.square_slots[pos.y][pos.x], None);
                         std::mem::replace(&mut self.square_slots[pos.y + 1][pos.x], sq);
                     }
@@ -391,8 +455,8 @@ impl App {
 
     fn decompose_tetromino(&mut self, tetro: Tetromino) {
         for rel_pos in tetro.squares.iter() {
-			let global_sq_pos = (tetro.pos + rel_pos).unwrap();
-            self.assign_square_at(global_sq_pos, Square{color: tetro.color});
+            let global_sq_pos = (tetro.pos + rel_pos).unwrap();
+            self.assign_square_at(global_sq_pos, Square { color: tetro.color });
         }
     }
 
@@ -406,8 +470,14 @@ impl App {
 
         let mut rng = rand::thread_rng();
         let num: usize = rng.gen_range(first_start_pos, last_start_pos);
-        let start = LanePosition {x: num, y: 1};
-        let tetro = Tetromino{t_type: t_type, squares: squares, float_pos: 0.0, pos: start, color: col};
+        let start = LanePosition { x: num, y: 1 };
+        let tetro = Tetromino {
+            t_type: t_type,
+            squares: squares,
+            float_pos: 0.0,
+            pos: start,
+            color: col,
+        };
         return tetro;
     }
 
@@ -421,17 +491,29 @@ impl App {
 
         let mut rng = rand::thread_rng();
         let num: usize = rng.gen_range(first_start_pos, last_start_pos);
-        let start = LanePosition {x: num, y: 1};
-        let tetro = Tetromino{t_type: t_type, squares: squares, float_pos: 0.0, pos: start, color: col};
+        let start = LanePosition { x: num, y: 1 };
+        let tetro = Tetromino {
+            t_type: t_type,
+            squares: squares,
+            float_pos: 0.0,
+            pos: start,
+            color: col,
+        };
 
-        for rel_pos in tetro.squares.iter() {
-			let global_sq_pos = (tetro.pos + rel_pos).unwrap();
-            if self.has_square_at(global_sq_pos) {
-                return None;
-            }
-        }
+        let invalid = tetro
+            .squares
+            .iter()
+            .map(|rel_pos| (tetro.pos + rel_pos).map_or(true, |x| self.has_square_at(x)))
+            .any(|b| b);
 
-        return Some(tetro);
+        return if invalid { None } else { Some(tetro) };
+    }
+
+    fn is_game_over(&mut self) -> bool {
+        self.square_slots[0]
+            .iter()
+            .map(|sq| sq.is_some())
+            .any(|b| b)
     }
 
     fn restart(&mut self) {
@@ -450,6 +532,28 @@ impl App {
             return;
         }
 
+        // Check overall game state
+        if self.is_done(&self.tetromino) {
+            if self.is_game_over() {
+                self.restart();
+                return;
+            }
+
+            let new_tetro = self.get_new_tetromino();
+            match new_tetro {
+                None => {
+                    self.restart();
+                    return;
+                }
+                Some(new_tetro) => {
+                    let old_tetro = std::mem::replace(&mut self.tetromino, new_tetro);
+                    self.decompose_tetromino(old_tetro);
+                    self.clean_filled_rows();
+                }
+            }
+        }
+
+        // Handle keyboard input
         if let Some(state) = self.mov_state {
             use MovementState::*;
             match state {
@@ -460,21 +564,9 @@ impl App {
             }
         }
 
-        if self.is_done(&self.tetromino) {
-            let new_tetro = self.get_new_tetromino();
-            if new_tetro.is_none() {
-                // Game over
-                self.restart();
-                return;
-            }
-
-            let old_tetro = std::mem::replace(&mut self.tetromino, new_tetro.unwrap());
-            self.decompose_tetromino(old_tetro);
-            self.clean_filled_rows();
-        }
-
+        // Move it
         self.tetromino.float_pos += self.mov_speed * args.dt;
-        if self.tetromino.float_pos > LANE_HEIGHT as f64{
+        if self.tetromino.float_pos > LANE_HEIGHT as f64 {
             self.tetromino.float_pos = 0.0;
             self.tetromino.move_down();
         }
@@ -519,19 +611,18 @@ impl App {
 fn main() {
     let opengl = OpenGL::V3_2;
 
-    let mut window: Window = WindowSettings::new(
-            "tetris",
-            [WINDOW_WIDTH as u32, WINDOW_HEIGHT as u32]
-        )
-        .opengl(opengl)
-        .exit_on_esc(true)
-        .build()
-        .unwrap();
+    let mut window: Window =
+        WindowSettings::new("tetris", [WINDOW_WIDTH as u32, WINDOW_HEIGHT as u32])
+            .opengl(opengl)
+            .exit_on_esc(true)
+            .build()
+            .unwrap();
 
-    let ref mut glyphs = GlyphCache::new("assets/FiraSans-Regular.ttf", (), TextureSettings::new()).expect("Could not load font");
+    let ref mut glyphs = GlyphCache::new("assets/FiraSans-Regular.ttf", (), TextureSettings::new())
+        .expect("Could not load font");
 
-    let mut app = App::new(GlGraphics::new(opengl)); {
-    };
+    let mut app = App::new(GlGraphics::new(opengl));
+    {};
 
     let mut events = Events::new(EventSettings::new());
     while let Some(e) = events.next(&mut window) {
@@ -548,4 +639,3 @@ fn main() {
         }
     }
 }
-
